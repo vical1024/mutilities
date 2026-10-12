@@ -30,7 +30,7 @@ trap 'rm -rf "$work_dir"' EXIT
 BUILD_OUTPUT_DIR="$work_dir" ./scripts/build-app.sh release
 app_dir="$work_dir/Mac Interface Controller.app"
 for executable in MacInterfaceController FunctionKeyRestore DisplayGuard; do
-  lipo -verify_arch "$architecture" "$app_dir/Contents/MacOS/$executable"
+  lipo "$app_dir/Contents/MacOS/$executable" -verify_arch "$architecture"
 done
 codesign --verify --deep --strict "$app_dir"
 plutil -lint "$app_dir/Contents/Info.plist"
