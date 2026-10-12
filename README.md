@@ -236,15 +236,14 @@ Finder와 창 배치의 전체/일부 활성화 상태 및 사용 개수, 창 �
 
 [Build and release macOS app](.github/workflows/build-and-release.yml)은 `main` 푸시와 Pull Request에서 테스트·빌드·패키징을 수행합니다. Actions 화면의 Run workflow로 수동 검증도 가능합니다. 빌드 결과는 실행 화면의 Artifacts에 14일간 보관합니다.
 
-`vMAJOR.MINOR.PATCH` 태그를 푸시하면 테스트가 성공한 두 아키텍처의 ZIP과 SHA-256 체크섬을 [GitHub Releases](https://github.com/vical1024/mutilities/releases)에 자동 게시합니다.
+`vMAJOR.MINOR.PATCH` 태그를 푸시하면 테스트가 성공한 Apple Silicon용 ZIP과 SHA-256 체크섬을 [GitHub Releases](https://github.com/vical1024/mutilities/releases)에 자동 게시합니다.
 
 | 파일 이름 끝부분 | 대상 |
 | --- | --- |
 | `macos-arm64.zip` | Apple Silicon Mac (M1 이상) |
-| `macos-x86_64.zip` | Intel Mac |
 | `.zip.sha256` | 해당 ZIP의 SHA-256 체크섬 |
 
-두 빌드 모두 macOS 14 이상용이며, 각 아키텍처의 macOS 15 러너에서 Xcode 16.4로 테스트합니다. 앱과 복구 보조 프로그램을 함께 서명하고, ZIP을 다시 풀어 서명·실행 권한을 검사한 뒤 게시합니다. 인증서를 별도로 지정하지 않은 자동 빌드는 ad-hoc 서명이며 Apple 공증은 포함하지 않습니다. 다운로드한 앱의 첫 실행에서 macOS의 개인정보 보호 및 보안 승인이 필요할 수 있습니다.
+자동 배포는 Apple Silicon(M1 이상), macOS 14 이상용입니다. ARM64 macOS 15 러너에서 Xcode 16.4로 테스트하며 Intel용 산출물은 만들지 않습니다. 앱과 복구 보조 프로그램을 함께 서명하고, ZIP을 다시 풀어 서명·실행 권한을 검사한 뒤 게시합니다. 인증서를 별도로 지정하지 않은 자동 빌드는 ad-hoc 서명이며 Apple 공증은 포함하지 않습니다. 다운로드한 앱의 첫 실행에서 macOS의 개인정보 보호 및 보안 승인이 필요할 수 있습니다.
 
 ### 버전 배포
 

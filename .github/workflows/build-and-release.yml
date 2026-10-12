@@ -16,17 +16,9 @@ concurrency:
 
 jobs:
   build:
-    name: Test and package (${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
+    name: Test and package (Apple Silicon)
+    runs-on: macos-15
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            arch: arm64
-          - runner: macos-15-intel
-            arch: x86_64
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
@@ -37,7 +29,7 @@ jobs:
       - name: Check toolchain and version
         shell: bash
         env:
-          EXPECTED_ARCH: ${{ matrix.arch }}
+          EXPECTED_ARCH: arm64
         run: |
           set -euo pipefail
           test "$(uname -m)" = "$EXPECTED_ARCH"
@@ -64,7 +56,7 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: macos-${{ matrix.arch }}
+          name: macos-arm64
           path: |
             dist/releases/*.zip
             dist/releases/*.sha256
@@ -81,24 +73,21 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download both builds
+      - name: Download Apple Silicon build
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          pattern: macos-*
+          name: macos-arm64
           path: release-assets
-          merge-multiple: true
 
       - name: Check release assets
         shell: bash
         run: |
           set -euo pipefail
           cd release-assets
-          for arch in arm64 x86_64; do
-            archive="Mac-Interface-Controller-$GITHUB_REF_NAME-macos-$arch.zip"
-            test -s "$archive"
-            test -s "$archive.sha256"
-            sha256sum --check "$archive.sha256"
-          done
+          archive="Mac-Interface-Controller-$GITHUB_REF_NAME-macos-arm64.zip"
+          test -s "$archive"
+          test -s "$archive.sha256"
+          sha256sum --check "$archive.sha256"
 
       - name: Create or complete release
         shell: bash
@@ -117,10 +106,9 @@ jobs:
             fi
           else
             cat > release-notes.md <<'NOTES'
-          macOS 14 or later.
+          Apple Silicon Mac (M1 or later), macOS 14 or later.
 
-          - Apple Silicon (M1 or later): download the `arm64.zip` file.
-          - Intel Mac: download the `x86_64.zip` file.
+          Download the `macos-arm64.zip` file.
 
           Unzip and move Mac Interface Controller.app to Applications. Complete initial setup and grant Accessibility and Input Monitoring access on each Mac. Settings can be transferred using profile export/import.
 
