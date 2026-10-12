@@ -1,0 +1,17 @@
+# Generated Swift/Xcode files
+.build/
+.swiftpm/
+*.xcodeproj/
+DerivedData/
+
+# Built applications and release archives
+dist/
+
+# Local backups, diagnostics and machine-specific files
+.work-backup/
+Diagnostics/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example

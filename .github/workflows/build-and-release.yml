@@ -1,0 +1,134 @@
+name: Build and release macOS app
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Test and package (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Check toolchain and version
+        shell: bash
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "$EXPECTED_ARCH"
+          xcodebuild -version
+          swift --version
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
+              echo '::error::Use a version tag such as v0.7.2.'
+              exit 1
+            }
+            test "$GITHUB_REF_NAME" = "v$version" || {
+              echo '::error::The tag must match CFBundleShortVersionString in Resources/Info.plist.'
+              exit 1
+            }
+          fi
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build, sign and verify ZIP
+        run: ./scripts/package-release.sh
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: macos-${{ matrix.arch }}
+          path: |
+            dist/releases/*.zip
+            dist/releases/*.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download both builds
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: macos-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Check release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          for arch in arm64 x86_64; do
+            archive="Mac-Interface-Controller-$GITHUB_REF_NAME-macos-$arch.zip"
+            test -s "$archive"
+            test -s "$archive.sha256"
+            sha256sum --check "$archive.sha256"
+          done
+
+      - name: Create or complete release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          # A rerun can complete a draft left by an interrupted upload.
+          # Published releases are immutable here: never replace their assets.
+          if gh release view "$tag" --json isDraft > release.json; then
+            if ! jq -e '.isDraft' release.json > /dev/null; then
+              echo '::error::This version is already published. Create a new version tag.'
+              exit 1
+            fi
+          else
+            cat > release-notes.md <<'NOTES'
+          macOS 14 or later.
+
+          - Apple Silicon (M1 or later): download the `arm64.zip` file.
+          - Intel Mac: download the `x86_64.zip` file.
+
+          Unzip and move Mac Interface Controller.app to Applications. Complete initial setup and grant Accessibility and Input Monitoring access on each Mac. Settings can be transferred using profile export/import.
+
+          These builds are ad-hoc signed and are not notarized by Apple. macOS may require approval in System Settings > Privacy & Security on first launch.
+          NOTES
+            gh release create "$tag" --verify-tag --draft \
+              --title "Mac Interface Controller $tag" \
+              --notes-file release-notes.md --generate-notes
+          fi
+          gh release upload "$tag" release-assets/*.zip release-assets/*.sha256 --clobber
+          gh release edit "$tag" --draft=false

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>ko</string>
+    <key>CFBundleExecutable</key>
+    <string>MacInterfaceController</string>
+    <key>CFBundleIdentifier</key>
+    <string>dev.local.MacInterfaceController</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Mac 인터페이스 컨트롤러</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.7.2</string>
+    <key>CFBundleVersion</key>
+    <string>13</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSUIElement</key>
+    <false/>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026</string>
+    <key>NSInputMonitoringUsageDescription</key>
+    <string>Windows 스타일 키 조합과 창 단위 전환을 감지하기 위해 키보드 입력을 모니터링합니다.</string>
+</dict>
+</plist>
