@@ -91,7 +91,7 @@ enum EngineConflictDetector {
     static func windowSwitcherIssues(shortcuts: [ShortcutRule], enabled: Bool) -> [ConflictIssue] {
         guard enabled else { return [] }
         return shortcuts.filter {
-            $0.isEnabled && $0.key == .tab && ($0.modifiers == [.control] || $0.modifiers == [.control, .shift])
+            $0.isEnabled && $0.key == .tab && ($0.modifiers == [.command] || $0.modifiers == [.command, .shift])
         }.map { rule in
             ConflictIssue(severity: .blocking, engine: "이 앱", title: "\(rule.displayText)는 창 전환기가 사용 중",
                           detail: "창 전환 탭에서 창 전환기를 끄거나 단축키를 다른 조합으로 바꿔 주세요.")

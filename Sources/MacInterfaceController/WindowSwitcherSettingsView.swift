@@ -17,14 +17,14 @@ struct WindowSwitcherSettingsView: View {
             MappingReadinessNotice()
             GroupBox {
                 VStack(alignment: .leading, spacing: 14) {
-                    SettingsToggleRow(title: "창 전환 사용", detail: "⌃Tab", symbol: "rectangle.on.rectangle",
+                    SettingsToggleRow(title: "창 전환 사용", detail: "⌘Tab", symbol: "rectangle.on.rectangle",
                                       isOn: $settings.windowSwitcherEnabled, showsDetailInline: true)
                     DisclosureGroup(L10n.text("조작 키 보기"), isExpanded: $showGuide) {
                         VStack(spacing: 12) {
-                            shortcut("⌃Tab", action: "다음 창")
-                            shortcut("⌃⇧Tab", action: "이전 창")
-                            shortcut("↑ / ↓", action: "목록에서 선택")
-                            shortcut("Enter", action: "선택한 창 열기")
+                            shortcut("⌘Tab", action: "다음 창")
+                            shortcut("⌘⇧Tab", action: "이전 창")
+                            shortcut("← → / ↑ ↓", action: "목록에서 선택")
+                            shortcut("⌘ 떼기 / Enter", action: "선택한 창 열기")
                             shortcut("W / ×", action: "선택한 창 닫기")
                             shortcut("Esc", action: "취소")
                         }.padding(.top, 12)
@@ -36,7 +36,7 @@ struct WindowSwitcherSettingsView: View {
                 SettingsNotice(title: "창 전환 확인 필요", detail: error, actionTitle: "권한 확인", action: { navigation.openCheck(.permissions) })
             }
             if !EngineConflictDetector.windowSwitcherIssues(shortcuts: settings.shortcuts, enabled: settings.windowSwitcherEnabled).isEmpty {
-                SettingsNotice(title: "창 전환 단축키가 겹칩니다", detail: "Control+Tab 또는 Control+Shift+Tab이 다른 단축키에도 지정되어 있습니다.", actionTitle: "충돌 검사", action: { navigation.openCheck(.conflicts) })
+                SettingsNotice(title: "창 전환 단축키가 겹칩니다", detail: "Command+Tab 또는 Command+Shift+Tab이 다른 단축키에도 지정되어 있습니다.", actionTitle: "충돌 검사", action: { navigation.openCheck(.conflicts) })
             }
             GroupBox {
                 VStack(alignment: .leading, spacing: 14) {

@@ -28,21 +28,21 @@ trap 'rm -rf "$work_dir"' EXIT
 
 # Package a fresh bundle without replacing the app being used locally.
 BUILD_OUTPUT_DIR="$work_dir" ./scripts/build-app.sh release
-app_dir="$work_dir/Mac Interface Controller.app"
-for executable in MacInterfaceController FunctionKeyRestore DisplayGuard; do
+app_dir="$work_dir/mutilities.app"
+for executable in MacInterfaceController FunctionKeyRestore DisplayGuard SwapHelper; do
   lipo "$app_dir/Contents/MacOS/$executable" -verify_arch "$architecture"
 done
 codesign --verify --deep --strict "$app_dir"
 plutil -lint "$app_dir/Contents/Info.plist"
 
-archive="Mac-Interface-Controller-$release_tag-macos-$architecture.zip"
+archive="mutilities-$release_tag-macos-$architecture.zip"
 ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$work_dir/$archive"
 
 # Verify the distributed ZIP, including executable permissions and signatures.
 ditto -x -k "$work_dir/$archive" "$work_dir/unpacked"
-codesign --verify --deep --strict "$work_dir/unpacked/Mac Interface Controller.app"
-for executable in MacInterfaceController FunctionKeyRestore DisplayGuard; do
-  test -x "$work_dir/unpacked/Mac Interface Controller.app/Contents/MacOS/$executable"
+codesign --verify --deep --strict "$work_dir/unpacked/mutilities.app"
+for executable in MacInterfaceController FunctionKeyRestore DisplayGuard SwapHelper; do
+  test -x "$work_dir/unpacked/mutilities.app/Contents/MacOS/$executable"
 done
 (
   cd "$work_dir"

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.local.MacInterfaceController.swaphelper</string>
+    <key>BundleProgram</key>
+    <string>Contents/MacOS/SwapHelper</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>SwapHelper</string>
+        <string>--control-dir</string>
+        <string>/Users/Shared/MacInterfaceController</string>
+        <string>--all</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>2</integer>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/Shared/MacInterfaceController/helper.log</string>
+</dict>
+</plist>

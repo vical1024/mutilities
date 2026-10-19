@@ -1,3 +1,4 @@
+import ServiceManagement
 import SwiftUI
 
 struct KeyboardSettingsView: View {
@@ -18,6 +19,7 @@ struct KeyboardSettingsView: View {
             GroupBox(L10n.text("입력 및 키 동작")) {
                 VStack(spacing: 0) {
                     SettingsToggleRow(title: "Control ↔ Command 교환", detail: "교환을 켜면 ⌃는 물리 Command 키, ⌘는 물리 Control 키입니다.", symbol: "arrow.left.arrow.right", isOn: $settings.swapCommandControl)
+                    SecureInputSwapNotice().padding(.bottom, 8)
                     Divider()
                     FunctionKeySettingsView()
                 }
@@ -51,6 +53,42 @@ struct KeyboardSettingsView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+/// Status of the bundled swap helper, which keeps the Control/Command swap working in password fields.
+struct SecureInputSwapNotice: View {
+    @AppStorage(AppLanguage.defaultsKey) private var uiLanguage = AppLanguage.korean.rawValue
+    @EnvironmentObject private var settings: AppSettings
+
+    var body: some View {
+        let _ = uiLanguage
+        let helper = SecureInputSwapHelper.shared
+        switch settings.swapHelperState {
+        case .off:
+            EmptyView()
+        case .active:
+            SettingsNotice(title: "비밀번호 입력창에서도 교환 중", detail: "긴급 해제: 왼쪽 Shift + 오른쪽 Shift + Esc",
+                           symbol: "lock.shield.fill", color: .green)
+        case .waiting, .starting:
+            SettingsNotice(title: "보안 입력 교환 준비 중", detail: "모든 키에서 손을 떼면 시작합니다. 그 전까지는 일반 방식으로 교환합니다.",
+                           symbol: "hourglass", color: .secondary)
+        case .driverMissing:
+            SettingsNotice(title: "비밀번호 입력창에서는 교환되지 않습니다", detail: "Karabiner-DriverKit-VirtualHIDDevice 드라이버를 설치하고 활성화하면 비밀번호 입력창에서도 교환합니다.",
+                           actionTitle: "드라이버 다운로드", action: { NSWorkspace.shared.open(SecureInputSwapHelper.driverReleasesURL) })
+        case .notRegistered:
+            SettingsNotice(title: "비밀번호 입력창에서는 교환되지 않습니다", detail: "보안 입력 교환 헬퍼를 설치하면 비밀번호 입력창에서도 교환합니다.",
+                           actionTitle: "헬퍼 설치", action: { helper.register() })
+        case .requiresApproval:
+            SettingsNotice(title: "헬퍼 실행을 허용해 주세요", detail: "시스템 설정 > 일반 > 로그인 항목 및 확장 프로그램에서 mutilities를 켜 주세요.",
+                           actionTitle: "시스템 설정 열기", action: { SMAppService.openSystemSettingsLoginItems() })
+        case .inputMonitoringRequired:
+            SettingsNotice(title: "헬퍼에 입력 모니터링 권한이 필요합니다", detail: "입력 모니터링 목록에 다음 파일을 추가해 주세요: \(helper.helperPath)",
+                           actionTitle: "입력 모니터링 열기", action: { KeyboardRemappingEngine.shared.openInputMonitoringSettings() })
+        case .disabledByShortcut:
+            SettingsNotice(title: "긴급 해제로 보안 입력 교환이 꺼졌습니다", detail: "지금은 일반 방식으로 교환합니다. 비밀번호 입력창에서는 교환되지 않습니다.",
+                           actionTitle: "다시 켜기", action: { helper.reenable() })
         }
     }
 }

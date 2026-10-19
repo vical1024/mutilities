@@ -103,11 +103,11 @@ struct LogicalShortcutTests {
         }
     }
 
-    @Test func windowSwitcherRecognizesLogicalControlWithAndWithoutSwap() throws {
+    @Test func windowSwitcherRecognizesLogicalCommandWithAndWithoutSwap() throws {
         for swapped in [false, true] {
             let engine = KeyboardRemappingEngine(swapCommandControl: swapped)
-            let trigger: CGEventFlags = swapped ? .maskCommand : .maskControl
-            let other: CGEventFlags = swapped ? .maskControl : .maskCommand
+            let trigger: CGEventFlags = swapped ? .maskControl : .maskCommand
+            let other: CGEventFlags = swapped ? .maskCommand : .maskControl
             for (physical, expected) in [(trigger, true), (other, false), (trigger.union(.maskShift), true),
                                          (trigger.union(.maskAlternate), false), (trigger.union(other), false),
                                          (CGEventFlags(), false)] {
@@ -121,18 +121,18 @@ struct LogicalShortcutTests {
         }
     }
 
-    @Test func windowSwitcherConflictsReserveControlTabAndReverseOnly() {
-        let rules = [ShortcutRule(key: .tab, modifiers: [.control], action: .finder),
-                     ShortcutRule(key: .tab, modifiers: [.control, .shift], action: .finder),
-                     ShortcutRule(key: .tab, modifiers: [.command], action: .finder),
+    @Test func windowSwitcherConflictsReserveCommandTabAndReverseOnly() {
+        let rules = [ShortcutRule(key: .tab, modifiers: [.command], action: .finder),
                      ShortcutRule(key: .tab, modifiers: [.command, .shift], action: .finder),
-                     ShortcutRule(key: .tab, modifiers: [.control, .option], action: .finder),
-                     ShortcutRule(isEnabled: false, key: .tab, modifiers: [.control], action: .finder)]
+                     ShortcutRule(key: .tab, modifiers: [.control], action: .finder),
+                     ShortcutRule(key: .tab, modifiers: [.control, .shift], action: .finder),
+                     ShortcutRule(key: .tab, modifiers: [.command, .option], action: .finder),
+                     ShortcutRule(isEnabled: false, key: .tab, modifiers: [.command], action: .finder)]
         let issues = EngineConflictDetector.windowSwitcherIssues(shortcuts: rules, enabled: true)
         #expect(issues.count == 2)
         #expect(issues.allSatisfy { $0.severity == .blocking })
-        #expect(issues[0].title.contains("⌃Tab"))
-        #expect(issues[1].title.contains("⌃⇧Tab"))
+        #expect(issues[0].title.contains("⌘Tab"))
+        #expect(issues[1].title.contains("⌘⇧Tab"))
         #expect(EngineConflictDetector.windowSwitcherIssues(shortcuts: rules, enabled: false).isEmpty)
     }
 

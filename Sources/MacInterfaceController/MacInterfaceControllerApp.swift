@@ -35,7 +35,7 @@ struct MacInterfaceControllerApp: App {
     @AppStorage(AppLanguage.defaultsKey) private var language = AppLanguage.korean.rawValue
 
     var body: some Scene {
-        Window(L10n.text("Mac Interface Controller"), id: "settings") {
+        Window(L10n.text("mutilities"), id: "settings") {
             ContentView()
                 .environmentObject(settings)
                 .environmentObject(navigation)
@@ -55,7 +55,7 @@ struct MacInterfaceControllerApp: App {
         }
         .defaultSize(width: 640, height: 560)
 
-        MenuBarExtra(L10n.text("Mac Interface Controller"), systemImage: "command.square.fill") {
+        MenuBarExtra(L10n.text("mutilities"), systemImage: "command.square.fill") {
             MenuBarView()
                 .environmentObject(settings)
                 .environmentObject(navigation)

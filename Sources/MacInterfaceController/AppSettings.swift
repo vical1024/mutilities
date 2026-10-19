@@ -41,6 +41,7 @@ final class AppSettings: ObservableObject {
     @Published private(set) var conflictReport: ConflictReport?
     @Published private(set) var isScanning = false
     @Published private(set) var inputSourceWarning: String?
+    @Published private(set) var swapHelperState: SecureInputSwapHelper.State = .off
 
     private let defaults = UserDefaults.standard
     private var hasFinishedInitialization = false
@@ -120,6 +121,10 @@ final class AppSettings: ObservableObject {
             self?.publishRuntimeStatus()
         }
         MacroRunner.shared.onFinish = { [weak self] in self?.apply() }
+        SecureInputSwapHelper.shared.onChange = { [weak self] state in
+            self?.swapHelperState = state
+            self?.apply()
+        }
         hasFinishedInitialization = true
         startupTask = Task { await beginSession() }
         monitor = Task { [weak self] in
@@ -164,6 +169,12 @@ final class AppSettings: ObservableObject {
         shortcutError = nil
         remappingError = nil
         inputSourceWarning = InputSourceManager.shared.availabilityWarning()
+        // The bundled helper swaps below the event tap, so the swap also works in Secure Input fields.
+        // The event tap keeps swapping until the helper actually holds the keyboard (fallback).
+        let swapHelper = SecureInputSwapHelper.shared
+        swapHelper.update(wanted: swapCommandControl && engineEnabled && setupPhase == .ready
+                                  && keyMappingState?.allowsRemapping == true,
+                          standardFunctionKeys: FunctionKeyController.shared.actualStandard ?? true)
         guard engineEnabled, !isWorking, !MacroRunner.shared.isRunning else { return }
         guard setupPhase == .ready, let keyMappingState else {
             configureIndependentLanguageShortcuts()
@@ -175,7 +186,7 @@ final class AppSettings: ObservableObject {
             return
         }
         let engine = KeyboardRemappingEngine.shared
-        remappingError = engine.configure(swapCommandControl: swapCommandControl,
+        remappingError = engine.configure(swapCommandControl: swapCommandControl && !swapHelper.isActive,
                                           windowsFinderMode: windowsFinderMode && !finderFeatures.isEmpty,
                                           finderFeatures: finderFeatures,
                                           windowSwitcherEnabled: windowSwitcherEnabled,
@@ -224,9 +235,15 @@ final class AppSettings: ObservableObject {
             "registeredShortcuts": shortcuts.filter { activeShortcutIDs.contains($0.id) }.map(\.displayText),
             "languageShortcutStatus": languageShortcutStatus,
             "shortcutError": shortcutError ?? "",
-            "remappingError": remappingError ?? ""
+            "remappingError": remappingError ?? "",
+            "swapHelperState": String(describing: swapHelperState)
         ]
         defaults.set(status, forKey: "diagnostic.runtime.v1")
+    }
+
+    /// Releases the keyboard held by the swap helper; apply() requests it again when appropriate.
+    private func stopSwapHelper() {
+        SecureInputSwapHelper.shared.update(wanted: false, standardFunctionKeys: FunctionKeyController.shared.actualStandard ?? true)
     }
 
     private func stopEngines() {
@@ -286,6 +303,7 @@ final class AppSettings: ObservableObject {
         systemGeneration = UUID()
         setupError = nil
         stopEngines()
+        stopSwapHelper()
         setPhase(.needsSetup)
         do {
             _ = try await SystemDefaultsService.resetManagedSettings()
@@ -326,6 +344,7 @@ final class AppSettings: ObservableObject {
         setupError = nil
         engineEnabled = false
         stopEngines()
+        stopSwapHelper()
         FunctionKeyController.shared.apply(nil)
         DisplayController.shared.apply(false)
         setPhase(.needsSetup)
@@ -408,6 +427,7 @@ final class AppSettings: ObservableObject {
         await dockUpdates.flush()
         DisplayController.shared.shutdown()
         stopEngines()
+        stopSwapHelper()
         FunctionKeyController.shared.apply(nil)
         do {
             try await SettingsHistory.shared.finish()
@@ -473,6 +493,7 @@ final class AppSettings: ObservableObject {
         historyError = nil
         await dockUpdates.flush()
         stopEngines()
+        stopSwapHelper()
         FunctionKeyController.shared.apply(nil)
         DisplayController.shared.apply(false)
         do {

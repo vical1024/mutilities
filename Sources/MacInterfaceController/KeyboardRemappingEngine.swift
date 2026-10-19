@@ -170,6 +170,11 @@ final class KeyboardRemappingEngine {
             let modifiers = relevantModifiers(event.flags)
 
             if windowSwitcher.isVisible {
+                // Releasing Command opens the targeted window, like the native switcher.
+                if type == .flagsChanged && !modifiers.contains(.maskCommand) {
+                    windowSwitcher.commitSelection()
+                    return Unmanaged.passUnretained(event)
+                }
                 if type == .keyDown && Self.isWindowCloseShortcut(keyCode: keyCode, modifiers: modifiers) {
                     if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
                         heldCloseKey = keyCode
@@ -178,12 +183,12 @@ final class KeyboardRemappingEngine {
                     consumedKeys.insert(keyCode)
                     return nil
                 }
-                if type == .keyDown && keyCode == kVK_UpArrow {
+                if type == .keyDown && (keyCode == kVK_UpArrow || keyCode == kVK_LeftArrow) {
                     windowSwitcher.showOrCycle(reverse: true)
                     consumedKeys.insert(keyCode)
                     return nil
                 }
-                if type == .keyDown && keyCode == kVK_DownArrow {
+                if type == .keyDown && (keyCode == kVK_DownArrow || keyCode == kVK_RightArrow) {
                     windowSwitcher.showOrCycle(reverse: false)
                     consumedKeys.insert(keyCode)
                     return nil
@@ -232,12 +237,12 @@ final class KeyboardRemappingEngine {
 
     static func isWindowCloseShortcut(keyCode: Int, modifiers: CGEventFlags) -> Bool {
         keyCode == kVK_ANSI_W
-            && (modifiers.isEmpty || modifiers == .maskControl || modifiers == [.maskControl, .maskShift])
+            && (modifiers.isEmpty || modifiers == .maskCommand || modifiers == [.maskCommand, .maskShift])
     }
 
     static func isWindowSwitcherShortcut(keyCode: Int, modifiers: CGEventFlags) -> Bool {
-        keyCode == kVK_Tab && modifiers.contains(.maskControl)
-            && modifiers.subtracting([.maskControl, .maskShift]).isEmpty
+        keyCode == kVK_Tab && modifiers.contains(.maskCommand)
+            && modifiers.subtracting([.maskCommand, .maskShift]).isEmpty
     }
 
     private func applyCommandControlSwap(to event: CGEvent) {

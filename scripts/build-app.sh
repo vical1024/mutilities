@@ -4,7 +4,7 @@ set -euo pipefail
 project_dir="${0:A:h:h}"
 configuration="${1:-release}"
 output_dir="${BUILD_OUTPUT_DIR:-$project_dir/dist}"
-app_dir="$output_dir/Mac Interface Controller.app"
+app_dir="$output_dir/mutilities.app"
 
 cd "$project_dir"
 swift_build_args=(-c "$configuration")
@@ -16,15 +16,19 @@ binary_dir="$(swift build "${swift_build_args[@]}" --show-bin-path)"
 mkdir -p "$output_dir"
 staging_dir="$(mktemp -d "$output_dir/.build-app.XXXXXX")"
 trap 'rm -rf "$staging_dir"' EXIT
-staged_app="$staging_dir/Mac Interface Controller.app"
+staged_app="$staging_dir/mutilities.app"
 mkdir -p "$staged_app/Contents/MacOS" "$staged_app/Contents/Resources"
 cp "$binary_dir/MacInterfaceController" "$staged_app/Contents/MacOS/MacInterfaceController"
 cp "$binary_dir/FunctionKeyRestore" "$staged_app/Contents/MacOS/FunctionKeyRestore"
 cp "$binary_dir/DisplayGuard" "$staged_app/Contents/MacOS/DisplayGuard"
+./scripts/build-swap-helper.sh "$staged_app/Contents/MacOS/SwapHelper"
+mkdir -p "$staged_app/Contents/Library/LaunchDaemons"
+cp "$project_dir/Resources/dev.local.MacInterfaceController.swaphelper.plist" "$staged_app/Contents/Library/LaunchDaemons/"
 cp "$project_dir/Resources/Info.plist" "$staged_app/Contents/Info.plist"
 signing_identity="${CODE_SIGN_IDENTITY:--}"
 codesign --force --sign "$signing_identity" "$staged_app/Contents/MacOS/FunctionKeyRestore"
 codesign --force --sign "$signing_identity" "$staged_app/Contents/MacOS/DisplayGuard"
+codesign --force --sign "$signing_identity" "$staged_app/Contents/MacOS/SwapHelper"
 if [[ "$signing_identity" == "-" ]]; then
   codesign --force --sign - \
     --requirements '=designated => identifier "dev.local.MacInterfaceController"' \

@@ -84,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           cd release-assets
-          archive="Mac-Interface-Controller-$GITHUB_REF_NAME-macos-arm64.zip"
+          archive="mutilities-$GITHUB_REF_NAME-macos-arm64.zip"
           test -s "$archive"
           test -s "$archive.sha256"
           sha256sum --check "$archive.sha256"
@@ -110,12 +110,12 @@ jobs:
 
           Download the `macos-arm64.zip` file.
 
-          Unzip and move Mac Interface Controller.app to Applications. Complete initial setup and grant Accessibility and Input Monitoring access on each Mac. Settings can be transferred using profile export/import.
+          Unzip and move mutilities.app to Applications. Complete initial setup and grant Accessibility and Input Monitoring access on each Mac. Settings can be transferred using profile export/import.
 
           These builds are ad-hoc signed and are not notarized by Apple. macOS may require approval in System Settings > Privacy & Security on first launch.
           NOTES
             gh release create "$tag" --verify-tag --draft \
-              --title "Mac Interface Controller $tag" \
+              --title "mutilities $tag" \
               --notes-file release-notes.md --generate-notes
           fi
           gh release upload "$tag" release-assets/*.zip release-assets/*.sha256 --clobber
