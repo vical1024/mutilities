@@ -4,6 +4,7 @@ import Combine
 import CoreGraphics
 import DisplaySupport
 import Darwin
+import IOKit
 
 @MainActor
 final class DisplayController: ObservableObject {
@@ -40,7 +41,7 @@ final class DisplayController: ObservableObject {
                 if self.process != nil { self.restoreIfExternalGone(); return }
                 self.refreshIdleState()
                 // The guard exits on any failure; an external display appearing again is the cue to resume.
-                if self.requested, !self.isStopping, self.error == nil, self.builtInOn == true, self.externalCount > 0 { self.start() }
+                if self.requested, !self.isStopping, self.builtInOn == true, self.externalCount > 0 { self.start() }
             }
         }
     }
@@ -86,6 +87,9 @@ final class DisplayController: ObservableObject {
         note("no external screen left; restarting guard to restore the built-in panel")
         restartAfterStop = requested
         stop()
+        // The change is app-scoped: WindowServer turns the panel back on the moment the guard process is gone, which is
+        // faster and more certain than waiting for the guard's own (display-list based) restore.
+        if let process { kill(process.processIdentifier, SIGKILL) }
     }
 
     deinit {
@@ -218,7 +222,7 @@ final class DisplayController: ObservableObject {
             return
         }
         tickCount += 1
-        if tickCount % 5 == 0 { restoreIfExternalGone() }  // the screen-change notification covers the immediate case
+        if tickCount % 5 == 0 { restoreIfExternalGone() }
         if let input {
             var ping: UInt8 = 112
             if Darwin.write(input.fileHandleForWriting.fileDescriptor, &ping, 1) != 1 {
@@ -255,12 +259,27 @@ final class DisplayController: ObservableObject {
         }
     }
 
-    /// NSScreen is what this app's run loop keeps current; CGGetActiveDisplayList can lag behind a hotplug.
+    /// With the built-in panel off, unplugging the last external screen leaves WindowServer with no display to
+    /// reconfigure, so NSScreen and CoreGraphics keep reporting the vanished screen. The IORegistry reflects the
+    /// hardware: Apple silicon publishes one DCPAVServiceProxy with Location "External" per connected screen.
     private static func externalDisplayCount() -> Int {
-        NSScreen.screens.filter {
+        #if arch(arm64)
+        var iterator: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("DCPAVServiceProxy"), &iterator) == KERN_SUCCESS else { return -1 }
+        defer { IOObjectRelease(iterator) }
+        var count = 0
+        while case let service = IOIteratorNext(iterator), service != 0 {
+            defer { IOObjectRelease(service) }
+            if let location = IORegistryEntryCreateCFProperty(service, "Location" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? String,
+               location == "External" { count += 1 }
+        }
+        return count
+        #else
+        return NSScreen.screens.filter {
             guard let number = $0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return false }
             return CGDisplayIsBuiltin(number.uint32Value) == 0
         }.count
+        #endif
     }
 
     private func note(_ message: String) {
