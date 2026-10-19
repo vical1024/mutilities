@@ -29,7 +29,7 @@ enum AppAction: String, Codable, CaseIterable, Identifiable {
         case .windowMaximize: "창 최대화"
         case .windowRestore: "창 이전 크기로 복원"
         case .windowCenter: "창 가운데 정렬"
-        case .windowCenterHeight: "창 가운데 · 크기 조절"
+        case .windowCenterHeight: "창 순환 배치"
         }
     }
 

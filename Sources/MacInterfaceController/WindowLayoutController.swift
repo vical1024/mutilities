@@ -58,6 +58,18 @@ enum WindowLayoutGeometry {
         }
     }
 
+    /// Quick repeats of one shortcut walk through: centered, left half, right half, fill.
+    static let cycleLength = 4
+
+    static func cycleTarget(step: Int, current: CGRect, visible: CGRect, heightPercent: Double, widthPercent: Double) -> CGRect {
+        switch step % cycleLength {
+        case 1: return target(.windowLeft, current: current, visible: visible)
+        case 2: return target(.windowRight, current: current, visible: visible)
+        case 3: return target(.windowMaximize, current: current, visible: visible)
+        default: return target(.windowCenterHeight, current: current, visible: visible, heightPercent: heightPercent, widthPercent: widthPercent)
+        }
+    }
+
     static func fitted(_ frame: CGRect, in visible: CGRect) -> CGRect {
         let width = min(frame.width, visible.width), height = min(frame.height, visible.height)
         return CGRect(x: min(max(frame.minX, visible.minX), visible.maxX - width),
@@ -99,8 +111,13 @@ final class WindowLayoutController: ObservableObject {
         var applied: CGRect
     }
     private var saved: [SavedWindow] = []
+    /// A repeat within this many seconds advances the cycle; a longer pause starts over.
+    private let cycleInterval: TimeInterval = 1.0
+    private var cycleWindow: AXUIElement?
+    private var cycleStep = 0
+    private var cycleTime: TimeInterval = 0
 
-    func run(_ action: AppAction, heightPercent: Double = 95, widthPercent: Double? = nil) {
+    func run(_ action: AppAction, heightPercent: Double = 90, widthPercent: Double? = nil) {
         guard action.isWindowLayout else { return }
         lastError = nil
         do {
@@ -132,6 +149,15 @@ final class WindowLayoutController: ObservableObject {
                 guard let previous else { throw LayoutError("이 창의 저장된 위치가 없습니다. 먼저 창 배치를 실행해 주세요.") }
                 let restoreIndex = WindowLayoutGeometry.screenIndex(for: previous.original, screens: frames) ?? index
                 target = WindowLayoutGeometry.fitted(previous.original, in: visibleFrames[restoreIndex])
+            } else if action == .windowCenterHeight {
+                let now = ProcessInfo.processInfo.systemUptime
+                if let cycleWindow, CFEqual(cycleWindow, window), now - cycleTime <= cycleInterval {
+                    cycleStep = (cycleStep + 1) % WindowLayoutGeometry.cycleLength
+                } else { cycleStep = 0 }
+                cycleWindow = window
+                cycleTime = now
+                target = WindowLayoutGeometry.cycleTarget(step: cycleStep, current: current, visible: visibleFrames[index],
+                                                          heightPercent: heightPercent, widthPercent: widthPercent ?? 90)
             } else {
                 target = WindowLayoutGeometry.target(action, current: current, visible: visibleFrames[index], heightPercent: heightPercent, widthPercent: widthPercent)
             }

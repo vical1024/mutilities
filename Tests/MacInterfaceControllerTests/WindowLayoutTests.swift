@@ -86,4 +86,17 @@ struct WindowLayoutTests {
         invalid.shortcuts[0].windowHeightPercent = 101
         #expect(throws: (any Error).self) { try invalid.validated() }
     }
+
+    @Test func repeatedCycleVisitsCenterLeftRightFill() {
+        let visible = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let current = CGRect(x: 100, y: 100, width: 400, height: 400)
+        func step(_ n: Int) -> CGRect {
+            WindowLayoutGeometry.cycleTarget(step: n, current: current, visible: visible, heightPercent: 90, widthPercent: 90)
+        }
+        #expect(step(0) == CGRect(x: 50, y: 40, width: 900, height: 720))
+        #expect(step(1) == CGRect(x: 0, y: 0, width: 500, height: 800))
+        #expect(step(2) == CGRect(x: 500, y: 0, width: 500, height: 800))
+        #expect(step(3) == visible)
+        #expect(step(4) == step(0))
+    }
 }

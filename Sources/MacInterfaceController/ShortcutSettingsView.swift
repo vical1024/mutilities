@@ -189,18 +189,15 @@ struct ShortcutRuleRow: View {
                 if rule.action == .windowCenterHeight {
                     HStack {
                         Text(L10n.text("화면 높이"))
-                        Slider(value: Binding(get: { rule.windowHeightPercent ?? 95 }, set: { rule.windowHeightPercent = $0 }), in: 30...100, step: 1)
-                        Text(L10n.text("\(Int(rule.windowHeightPercent ?? 95))%"))
+                        Slider(value: Binding(get: { rule.windowHeightPercent ?? 90 }, set: { rule.windowHeightPercent = $0 }), in: 30...100, step: 1)
+                        Text(L10n.text("\(Int(rule.windowHeightPercent ?? 90))%"))
                             .monospacedDigit().frame(width: 45, alignment: .trailing)
                     }
                     HStack {
                         Text(L10n.text("화면 너비"))
-                        Toggle(L10n.text("기존 너비 유지"), isOn: Binding(get: { rule.windowWidthPercent == nil }, set: { rule.windowWidthPercent = $0 ? nil : 95 }))
-                            .toggleStyle(.checkbox)
-                        Slider(value: Binding(get: { rule.windowWidthPercent ?? 95 }, set: { rule.windowWidthPercent = $0 }), in: 30...100, step: 1)
-                            .disabled(rule.windowWidthPercent == nil)
-                        Text(L10n.text(rule.windowWidthPercent.map { "\(Int($0))%" } ?? "유지")).monospacedDigit().frame(width: 45, alignment: .trailing)
-                        HelpButton(title: "창 크기", text: "비율은 메뉴 막대와 Dock을 제외한 영역을 기준으로 합니다. 앱의 최소 창 크기에 따라 지정한 비율보다 커질 수 있습니다.")
+                        Slider(value: Binding(get: { rule.windowWidthPercent ?? 90 }, set: { rule.windowWidthPercent = $0 }), in: 30...100, step: 1)
+                        Text(L10n.text("\(Int(rule.windowWidthPercent ?? 90))%")).monospacedDigit().frame(width: 45, alignment: .trailing)
+                        HelpButton(title: "창 순환 배치", text: "이 단축키를 1초 안에 연달아 누르면 가운데(지정한 너비·높이) → 왼쪽 절반 → 오른쪽 절반 → 전체 순서로 바뀝니다. 1초 넘게 쉬면 처음부터 시작합니다. 비율은 메뉴 막대와 Dock을 제외한 영역 기준이며, 앱의 최소 창 크기에 따라 더 커질 수 있습니다.")
                     }
                 }
                 if rule.action == .macro {
