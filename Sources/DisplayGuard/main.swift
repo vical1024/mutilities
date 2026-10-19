@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import DisplaySupport
 import Darwin
@@ -51,6 +52,14 @@ do {
     logHandle = try? FileHandle(forWritingTo: logURL)
     _ = try? logHandle?.seekToEnd()
     note("start builtIn=\(id)")
+    // Raw WindowServer view, to compare with what the session logic decided.
+    CGDisplayRegisterReconfigurationCallback({ display, flags, _ in
+        var ids = [CGDirectDisplayID](repeating: 0, count: 16); var count: UInt32 = 0
+        CGGetActiveDisplayList(16, &ids, &count)
+        var online = [CGDirectDisplayID](repeating: 0, count: 16); var onlineCount: UInt32 = 0
+        CGGetOnlineDisplayList(16, &online, &onlineCount)
+        note("reconfig display=\(display) flags=\(flags.rawValue) active=\(ids.prefix(Int(count))) online=\(online.prefix(Int(onlineCount)))")
+    }, nil)
     let lockFD = open(folder.appendingPathComponent("display-guard.lock").path, O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0o600)
     guard lockFD >= 0, flock(lockFD, LOCK_EX | LOCK_NB) == 0 else {
         throw DisplayFailure("다른 화면 제어 프로세스가 이미 실행 중입니다. 잠시 후 다시 시도해 주세요.")
