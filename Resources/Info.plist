@@ -8,6 +8,8 @@
 	<string>mutilities</string>
 	<key>CFBundleExecutable</key>
 	<string>MacInterfaceController</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>dev.local.MacInterfaceController</string>
 	<key>CFBundleInfoDictionaryVersion</key>
