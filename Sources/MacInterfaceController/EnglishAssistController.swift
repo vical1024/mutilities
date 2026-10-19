@@ -327,7 +327,7 @@ struct EnglishAssistSettingsView: View {
     @AppStorage(EnglishAssistDefaults.delayKey) private var delay = EnglishAssistDefaults.defaultDelay
     @State private var apps = EnglishAssistDefaults.apps
     @State private var apiKey = ""
-    @State private var hasKey = EnglishAssistKeychain.read() != nil
+    @State private var hasKey = false
 
     var body: some View {
         let _ = uiLanguage
@@ -370,6 +370,7 @@ struct EnglishAssistSettingsView: View {
                 }
             }
         }
+        .onAppear { hasKey = EnglishAssistKeychain.read() != nil }
     }
 
     private var runningApplications: [NSRunningApplication] {
