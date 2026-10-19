@@ -93,10 +93,23 @@ struct WindowLayoutTests {
         func step(_ n: Int) -> CGRect {
             WindowLayoutGeometry.cycleTarget(step: n, current: current, visible: visible, heightPercent: 90, widthPercent: 90)
         }
-        #expect(step(0) == CGRect(x: 50, y: 40, width: 900, height: 720))
+        #expect(step(0) == CGRect(x: 0, y: 0, width: 900, height: 720))
         #expect(step(1) == CGRect(x: 0, y: 0, width: 500, height: 800))
         #expect(step(2) == CGRect(x: 500, y: 0, width: 500, height: 800))
         #expect(step(3) == visible)
         #expect(step(4) == step(0))
+    }
+
+    @Test func cascadeSkipsOccupiedCornersAndWraps() {
+        let visible = CGRect(x: 10, y: 20, width: 1000, height: 800)
+        func place(_ occupied: [CGPoint]) -> CGPoint {
+            WindowLayoutGeometry.cascadeTarget(visible: visible, heightPercent: 90, widthPercent: 90, occupiedOrigins: occupied).origin
+        }
+        #expect(place([]) == CGPoint(x: 10, y: 20))
+        #expect(place([CGPoint(x: 10, y: 20)]) == CGPoint(x: 42, y: 52))
+        #expect(place([CGPoint(x: 10, y: 20), CGPoint(x: 42, y: 52)]) == CGPoint(x: 74, y: 84))
+        // 80pt of slack below the window allows slots 0...2; a fourth window wraps to the start.
+        let full = [CGPoint(x: 10, y: 20), CGPoint(x: 42, y: 52), CGPoint(x: 74, y: 84)]
+        #expect(place(full) == CGPoint(x: 10, y: 20))
     }
 }

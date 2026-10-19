@@ -61,12 +61,32 @@ enum WindowLayoutGeometry {
     /// Quick repeats of one shortcut walk through: centered, left half, right half, fill.
     static let cycleLength = 4
 
-    static func cycleTarget(step: Int, current: CGRect, visible: CGRect, heightPercent: Double, widthPercent: Double) -> CGRect {
+    static let cascadeOffset: CGFloat = 32
+
+    /// First step of the cycle: top-left of the screen, then down-right by `cascadeOffset` for each
+    /// window already sitting at that spot. If every spot is taken it wraps around.
+    static func cascadeTarget(visible: CGRect, heightPercent: Double, widthPercent: Double, occupiedOrigins: [CGPoint]) -> CGRect {
+        func clamp(_ value: Double) -> CGFloat { CGFloat(value.isFinite ? min(100, max(30, value)) : 90) / 100 }
+        let size = CGSize(width: visible.width * clamp(widthPercent), height: visible.height * clamp(heightPercent))
+        let slots = max(1, Int(min(visible.width - size.width, visible.height - size.height) / cascadeOffset) + 1)
+        func origin(_ slot: Int) -> CGPoint {
+            CGPoint(x: visible.minX + CGFloat(slot) * cascadeOffset, y: visible.minY + CGFloat(slot) * cascadeOffset)
+        }
+        func isTaken(_ slot: Int) -> Bool {
+            let point = origin(slot)
+            return occupiedOrigins.contains { abs($0.x - point.x) <= cascadeOffset / 2 && abs($0.y - point.y) <= cascadeOffset / 2 }
+        }
+        let slot = (0..<slots).first { !isTaken($0) } ?? occupiedOrigins.count % slots
+        return CGRect(origin: origin(slot), size: size)
+    }
+
+    static func cycleTarget(step: Int, current: CGRect, visible: CGRect, heightPercent: Double, widthPercent: Double,
+                            occupiedOrigins: [CGPoint] = []) -> CGRect {
         switch step % cycleLength {
         case 1: return target(.windowLeft, current: current, visible: visible)
         case 2: return target(.windowRight, current: current, visible: visible)
         case 3: return target(.windowMaximize, current: current, visible: visible)
-        default: return target(.windowCenterHeight, current: current, visible: visible, heightPercent: heightPercent, widthPercent: widthPercent)
+        default: return cascadeTarget(visible: visible, heightPercent: heightPercent, widthPercent: widthPercent, occupiedOrigins: occupiedOrigins)
         }
     }
 
@@ -157,7 +177,8 @@ final class WindowLayoutController: ObservableObject {
                 cycleWindow = window
                 cycleTime = now
                 target = WindowLayoutGeometry.cycleTarget(step: cycleStep, current: current, visible: visibleFrames[index],
-                                                          heightPercent: heightPercent, widthPercent: widthPercent ?? 90)
+                                                          heightPercent: heightPercent, widthPercent: widthPercent ?? 90,
+                                                          occupiedOrigins: cycleStep == 0 ? otherWindowOrigins(excluding: current, pid: app.processIdentifier, on: visibleFrames[index]) : [])
             } else {
                 target = WindowLayoutGeometry.target(action, current: current, visible: visibleFrames[index], heightPercent: heightPercent, widthPercent: widthPercent)
             }
@@ -190,6 +211,19 @@ final class WindowLayoutController: ObservableObject {
             lastError = error.localizedDescription
             NSSound.beep()
             NSLog("창 배치 실패: %@", error.localizedDescription)
+        }
+    }
+
+    /// Top-left corners of other visible windows on this screen, in the same coordinates as AX frames.
+    private func otherWindowOrigins(excluding current: CGRect, pid: pid_t, on visible: CGRect) -> [CGPoint] {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return [] }
+        return list.compactMap { info in
+            guard (info[kCGWindowLayer as String] as? Int) == 0,
+                  let boundsInfo = info[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: boundsInfo),
+                  bounds.width > 100, bounds.height > 100, visible.contains(bounds.origin) else { return nil }
+            if (info[kCGWindowOwnerPID as String] as? pid_t) == pid, WindowLayoutGeometry.approximatelyEqual(bounds, current) { return nil }
+            return bounds.origin
         }
     }
 
