@@ -10,6 +10,7 @@ struct PortableProfile: Codable, Equatable {
     var windowSwitcherEnabled: Bool
     var standardFunctionKeys: Bool? = nil
     var finderFeatures: Set<FinderFeature>? = nil
+    var windowsEditorMode: Bool? = nil
 
     func validated() throws -> Self {
         guard [1, 2, 3].contains(version) else { throw ProfileError.invalid("지원하지 않는 설정 버전입니다: \(version)") }

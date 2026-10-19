@@ -7,6 +7,10 @@ struct KeyboardSettingsView: View {
     @EnvironmentObject private var navigation: AppNavigation
     @State private var expandedID: UUID?
     @State private var showFinder = false
+    @State private var showEditor = false
+    private static let editorKeys: [(String, String)] = [
+        ("Home / End", "줄 처음 / 끝으로 (입력창)"), ("Ctrl+Home / End", "문서 처음 / 끝으로 (입력창)"),
+        ("Ctrl+← / →", "단어 단위 이동 (입력창)"), ("Ctrl+Page Up / Down", "이전 / 다음 탭")]
 
     var body: some View {
         let _ = uiLanguage
@@ -27,6 +31,18 @@ struct KeyboardSettingsView: View {
             ForEach($settings.shortcuts) { $rule in
                 if rule.templateID == AppAction.toggleInputSource.rawValue {
                     ShortcutRuleRow(rule: $rule, expanded: Binding(get: { expandedID == rule.id }, set: { expandedID = $0 ? rule.id : nil }), delete: {})
+                }
+            }
+            GroupBox {
+                VStack(alignment: .leading, spacing: 14) {
+                    FeatureGroupHeader(title: "Windows 스타일 편집", isEnabled: settings.windowsEditorMode) { settings.windowsEditorMode = $0 }
+                    DisclosureGroup(L10n.text("조작 키 보기"), isExpanded: $showEditor) {
+                        VStack(spacing: 12) {
+                            ForEach(Self.editorKeys, id: \.0) { keys, action in
+                                HStack { Text(L10n.text(action)); Spacer(); ShortcutBadge(keys: keys) }
+                            }
+                        }.padding(.top, 8)
+                    }
                 }
             }
             GroupBox {

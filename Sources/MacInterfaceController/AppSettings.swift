@@ -11,6 +11,7 @@ final class AppSettings: ObservableObject {
     @Published var corners: [HotCornerRule] { didSet { persistAndApply() } }
     @Published var swapCommandControl: Bool { didSet { persistAndApply() } }
     @Published var windowsFinderMode: Bool { didSet { persistAndApply() } }
+    @Published var windowsEditorMode: Bool { didSet { persistAndApply() } }
     @Published var finderFeatures: Set<FinderFeature> { didSet { persistAndApply() } }
     @Published var windowSwitcherEnabled: Bool { didSet { persistAndApply() } }
     @Published var standardFunctionKeys: Bool? { didSet { persistAndApply() } }
@@ -56,14 +57,15 @@ final class AppSettings: ObservableObject {
     private var systemMonitor: Task<Void, Never>?
 
     var requiresInputPermissions: Bool {
-        swapCommandControl || (windowsFinderMode && !finderFeatures.isEmpty) || windowSwitcherEnabled
+        swapCommandControl || (windowsFinderMode && !finderFeatures.isEmpty) || windowSwitcherEnabled || windowsEditorMode
             || shortcuts.contains { $0.isEnabled && $0.action == .macro }
     }
 
     var profile: PortableProfile {
         PortableProfile(name: "내 키 설정", shortcuts: shortcuts, corners: corners,
                         swapCommandControl: swapCommandControl, windowsFinderMode: windowsFinderMode,
-                        windowSwitcherEnabled: windowSwitcherEnabled, standardFunctionKeys: standardFunctionKeys, finderFeatures: finderFeatures)
+                        windowSwitcherEnabled: windowSwitcherEnabled, standardFunctionKeys: standardFunctionKeys, finderFeatures: finderFeatures,
+                        windowsEditorMode: windowsEditorMode)
     }
 
     var statusText: String {
@@ -99,6 +101,7 @@ final class AppSettings: ObservableObject {
         setupPhase = SetupPhase(rawValue: defaults.string(forKey: "setupPhase.v2") ?? "") ?? .needsSetup
         swapCommandControl = saved?.swapCommandControl ?? defaults.object(forKey: "swapCommandControl") as? Bool ?? false
         windowsFinderMode = saved?.windowsFinderMode ?? defaults.object(forKey: "windowsFinderMode") as? Bool ?? false
+        windowsEditorMode = saved?.windowsEditorMode ?? false
         windowSwitcherEnabled = saved?.windowSwitcherEnabled ?? defaults.object(forKey: "windowSwitcherEnabled") as? Bool ?? true
         standardFunctionKeys = saved?.standardFunctionKeys
         finderFeatures = saved?.finderFeatures ?? Set(FinderFeature.allCases)
@@ -194,6 +197,7 @@ final class AppSettings: ObservableObject {
                                           windowsFinderMode: windowsFinderMode && !finderFeatures.isEmpty,
                                           finderFeatures: finderFeatures,
                                           windowSwitcherEnabled: windowSwitcherEnabled,
+                                          windowsEditorMode: windowsEditorMode,
                                           macrosEnabled: shortcuts.contains { $0.isEnabled && $0.action == .macro })
         accessibilityGranted = engine.accessibilityGranted
         inputMonitoringGranted = engine.inputMonitoringGranted
@@ -369,7 +373,7 @@ final class AppSettings: ObservableObject {
         guard !isScanning else { return }
         isScanning = true
         let revision = configurationRevision
-        let report = await EngineConflictDetector.scan(shortcuts: shortcuts, registrationError: shortcutError, windowSwitcherEnabled: windowSwitcherEnabled, windowsFinderMode: windowsFinderMode)
+        let report = await EngineConflictDetector.scan(shortcuts: shortcuts, registrationError: shortcutError, windowSwitcherEnabled: windowSwitcherEnabled, windowsFinderMode: windowsFinderMode, windowsEditorMode: windowsEditorMode)
         if revision != configurationRevision {
             isScanning = false
             await scanConflicts()
@@ -391,6 +395,7 @@ final class AppSettings: ObservableObject {
         corners = profile.corners
         swapCommandControl = profile.swapCommandControl
         windowsFinderMode = profile.windowsFinderMode
+        windowsEditorMode = profile.windowsEditorMode ?? false
         windowSwitcherEnabled = profile.windowSwitcherEnabled
         standardFunctionKeys = profile.standardFunctionKeys
         finderFeatures = profile.finderFeatures ?? Set(FinderFeature.allCases)
@@ -513,6 +518,7 @@ final class AppSettings: ObservableObject {
             corners = snapshot.app.profile.corners
             swapCommandControl = snapshot.app.profile.swapCommandControl
             windowsFinderMode = snapshot.app.profile.windowsFinderMode
+            windowsEditorMode = snapshot.app.profile.windowsEditorMode ?? false
             finderFeatures = snapshot.app.profile.finderFeatures ?? Set(FinderFeature.allCases)
             windowSwitcherEnabled = snapshot.app.profile.windowSwitcherEnabled
             standardFunctionKeys = snapshot.app.profile.standardFunctionKeys

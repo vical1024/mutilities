@@ -98,10 +98,16 @@ enum EngineConflictDetector {
         }
     }
 
-    static func scan(shortcuts: [ShortcutRule], registrationError: String?, windowSwitcherEnabled: Bool = false, windowsFinderMode: Bool = false) async -> ConflictReport {
+    static func scan(shortcuts: [ShortcutRule], registrationError: String?, windowSwitcherEnabled: Bool = false, windowsFinderMode: Bool = false, windowsEditorMode: Bool = false) async -> ConflictReport {
         await Task.detached {
             var issues = internalDuplicateIssues(shortcuts: shortcuts)
             issues.append(contentsOf: windowSwitcherIssues(shortcuts: shortcuts, enabled: windowSwitcherEnabled))
+            if windowsEditorMode {
+                let editorKeys: Set<ShortcutKey> = [.home, .end, .left, .right, .pageUp, .pageDown]
+                for rule in shortcuts where rule.isEnabled && (rule.modifiers == [.control] || rule.modifiers == [.control, .shift]) && editorKeys.contains(rule.key) {
+                    issues.append(ConflictIssue(severity: .blocking, engine: "이 앱 / Windows 편집 키", title: "\(rule.displayText)는 Windows 편집 키 매핑과 겹침", detail: "입력창에서는 편집 키 매핑이 먼저 처리됩니다. 다른 단축키를 선택하거나 Windows 스타일 편집을 꺼 주세요."))
+                }
+            }
             if windowsFinderMode {
                 let finderControlKeys: Set<ShortcutKey> = [.a, .c, .f, .n, .w, .z, .x, .v, .y, .l]
                 for rule in shortcuts where rule.isEnabled && ((rule.modifiers == [.control] && finderControlKeys.contains(rule.key)) || (rule.modifiers == [.control, .shift] && rule.key == .n)) {

@@ -10,6 +10,8 @@ final class KeyboardRemappingEngine {
     private(set) var isActive = false
     private var swapCommandControl = false
     private var windowsFinderMode = false
+    private var windowsEditorMode = false
+    private var manualAccessibilityPIDs: Set<pid_t> = []
     private var finderFeatures = Set(FinderFeature.allCases)
     private var windowSwitcherEnabled = false
     private var finderCut = FinderCutState()
@@ -23,9 +25,10 @@ final class KeyboardRemappingEngine {
     enum FinderContext { case files, text, otherApplication }
 
     init(swapCommandControl: Bool = false, windowsFinderMode: Bool = false, finderFeatures: Set<FinderFeature> = Set(FinderFeature.allCases),
-         windowSwitcherEnabled: Bool = false, windowSwitcher: WindowSwitching = WindowSwitcherController.shared) {
+         windowSwitcherEnabled: Bool = false, windowsEditorMode: Bool = false, windowSwitcher: WindowSwitching = WindowSwitcherController.shared) {
         self.swapCommandControl = swapCommandControl
         self.windowsFinderMode = windowsFinderMode
+        self.windowsEditorMode = windowsEditorMode
         self.finderFeatures = finderFeatures
         self.windowSwitcherEnabled = windowSwitcherEnabled
         self.windowSwitcher = windowSwitcher
@@ -65,6 +68,7 @@ final class KeyboardRemappingEngine {
         windowsFinderMode: Bool,
         finderFeatures: Set<FinderFeature> = Set(FinderFeature.allCases),
         windowSwitcherEnabled: Bool,
+        windowsEditorMode: Bool = false,
         macrosEnabled: Bool = false
     ) -> String? {
         if self.windowsFinderMode != windowsFinderMode || self.finderFeatures != finderFeatures { finderCut.cancel() }
@@ -73,8 +77,9 @@ final class KeyboardRemappingEngine {
         self.windowsFinderMode = windowsFinderMode
         self.finderFeatures = finderFeatures
         self.windowSwitcherEnabled = windowSwitcherEnabled
+        self.windowsEditorMode = windowsEditorMode
 
-        guard swapCommandControl || windowsFinderMode || windowSwitcherEnabled || macrosEnabled else {
+        guard swapCommandControl || windowsFinderMode || windowSwitcherEnabled || windowsEditorMode || macrosEnabled else {
             stop()
             return nil
         }
@@ -137,7 +142,7 @@ final class KeyboardRemappingEngine {
         return engine.transform(type: type, event: event)
     }
 
-    func transform(type: CGEventType, event: CGEvent, finderContext: FinderContext? = nil) -> Unmanaged<CGEvent>? {
+    func transform(type: CGEventType, event: CGEvent, finderContext: FinderContext? = nil, textFocused: Bool? = nil) -> Unmanaged<CGEvent>? {
         guard type == .keyDown || type == .keyUp || type == .flagsChanged else {
             return Unmanaged.passUnretained(event)
         }
@@ -225,6 +230,11 @@ final class KeyboardRemappingEngine {
                 }
                 return Unmanaged.passUnretained(event)
             }
+        }
+
+        if windowsEditorMode, type == .keyDown, applyEditorMapping(event: event, textFocused: textFocused) {
+            rewrittenKeys[originalKey] = (Int(event.getIntegerValueField(.keyboardEventKeycode)), relevantModifiers(event.flags))
+            return Unmanaged.passUnretained(event)
         }
 
         if swapCommandControl {
@@ -360,6 +370,42 @@ final class KeyboardRemappingEngine {
         default:
             return false
         }
+    }
+
+    /// Windows-style editing keys, applied after the swap so Ctrl means the logical Control key.
+    /// Line/word/document moves only apply while a text input has focus; Ctrl+Page Up/Down switch tabs anywhere.
+    private func applyEditorMapping(event: CGEvent, textFocused: Bool?) -> Bool {
+        let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+        let modifiers = relevantModifiers(event.flags)
+        let shift = modifiers.contains(.maskShift)
+        let base = modifiers.subtracting(.maskShift)
+
+        if base == .maskControl, !shift, keyCode == kVK_PageUp || keyCode == kVK_PageDown {
+            rewrite(event, keyCode: kVK_Tab, modifiers: keyCode == kVK_PageUp ? [.maskControl, .maskShift] : [.maskControl])
+            return true
+        }
+
+        let target: (Int, CGEventFlags)?
+        switch (keyCode, base) {
+        case (kVK_Home, []): target = (kVK_LeftArrow, [.maskCommand])
+        case (kVK_End, []): target = (kVK_RightArrow, [.maskCommand])
+        case (kVK_Home, .maskControl): target = (kVK_UpArrow, [.maskCommand])
+        case (kVK_End, .maskControl): target = (kVK_DownArrow, [.maskCommand])
+        case (kVK_LeftArrow, .maskControl): target = (kVK_LeftArrow, [.maskAlternate])
+        case (kVK_RightArrow, .maskControl): target = (kVK_RightArrow, [.maskAlternate])
+        default: target = nil
+        }
+        guard let (mappedKey, mappedModifiers) = target, textFocused ?? focusedElementIsTextInput() else { return false }
+        rewrite(event, keyCode: mappedKey, modifiers: shift ? mappedModifiers.union(.maskShift) : mappedModifiers)
+        return true
+    }
+
+    /// Chromium and Electron only publish their accessibility tree after a client asks for it.
+    private func focusedElementIsTextInput() -> Bool {
+        if let app = NSWorkspace.shared.frontmostApplication, manualAccessibilityPIDs.insert(app.processIdentifier).inserted {
+            AXUIElementSetAttributeValue(AXUIElementCreateApplication(app.processIdentifier), "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        }
+        return finderHasFocusedTextInput()
     }
 
     private func finderHasFocusedTextInput() -> Bool {

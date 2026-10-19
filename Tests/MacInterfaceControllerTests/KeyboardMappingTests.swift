@@ -119,6 +119,30 @@ struct LogicalShortcutTests {
         }
     }
 
+    @Test func windowsEditorKeysMapInTextInputsAndTabsAnywhere() throws {
+        func mapped(_ key: Int, _ flags: CGEventFlags, text: Bool) throws -> (Int, CGEventFlags) {
+            let engine = KeyboardRemappingEngine(windowsEditorMode: true)
+            let input = try event(key, flags: flags)
+            _ = engine.transform(type: .keyDown, event: input, finderContext: .otherApplication, textFocused: text)
+            return (Int(input.getIntegerValueField(.keyboardEventKeycode)),
+                    input.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift]))
+        }
+        #expect(try mapped(kVK_Home, [], text: true) == (kVK_LeftArrow, [.maskCommand]))
+        #expect(try mapped(kVK_End, .maskShift, text: true) == (kVK_RightArrow, [.maskCommand, .maskShift]))
+        #expect(try mapped(kVK_Home, .maskControl, text: true) == (kVK_UpArrow, [.maskCommand]))
+        #expect(try mapped(kVK_End, [.maskControl, .maskShift], text: true) == (kVK_DownArrow, [.maskCommand, .maskShift]))
+        #expect(try mapped(kVK_LeftArrow, .maskControl, text: true) == (kVK_LeftArrow, [.maskAlternate]))
+        #expect(try mapped(kVK_RightArrow, [.maskControl, .maskShift], text: true) == (kVK_RightArrow, [.maskAlternate, .maskShift]))
+        // Outside text inputs the keys keep their macOS meaning (page scroll, Space switching).
+        #expect(try mapped(kVK_Home, [], text: false) == (kVK_Home, []))
+        #expect(try mapped(kVK_LeftArrow, .maskControl, text: false) == (kVK_LeftArrow, .maskControl))
+        // Tab switching does not depend on focus.
+        #expect(try mapped(kVK_PageUp, .maskControl, text: false) == (kVK_Tab, [.maskControl, .maskShift]))
+        #expect(try mapped(kVK_PageDown, .maskControl, text: false) == (kVK_Tab, .maskControl))
+        // Plain Page Up/Down are untouched.
+        #expect(try mapped(kVK_PageUp, [], text: true) == (kVK_PageUp, []))
+    }
+
     @Test func windowSwitcherConflictsReserveOptionTabAndReverseOnly() {
         let rules = [ShortcutRule(key: .tab, modifiers: [.option], action: .finder),
                      ShortcutRule(key: .tab, modifiers: [.option, .shift], action: .finder),
