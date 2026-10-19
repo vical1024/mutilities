@@ -99,7 +99,7 @@ struct DockSettingsView: View {
     private func sizeRow(_ title: String, value: Binding<Double?>, fallback: Double, minimum: Double) -> some View {
         HStack {
             Text(L10n.text(title)).font(.body).frame(width: 110, alignment: .leading)
-            Slider(value: Binding(get: { min(128, max(minimum, value.wrappedValue ?? fallback)) }, set: { value.wrappedValue = $0 }), in: min(128, max(16, minimum))...128, step: 1)
+            Slider(value: Binding(get: { min(128, max(minimum, value.wrappedValue ?? fallback)) }, set: { value.wrappedValue = $0.rounded() }), in: min(128, max(16, minimum))...128)
                 .accessibilityLabel(L10n.text(title))
             Text(L10n.text(value.wrappedValue.map { String(format: "%.0f", $0) } ?? "기본값")).monospacedDigit().frame(width: 55, alignment: .trailing)
         }
