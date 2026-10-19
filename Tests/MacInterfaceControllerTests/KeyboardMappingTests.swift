@@ -196,4 +196,13 @@ struct LogicalShortcutTests {
         #expect(release.flags.contains(.maskCommand))
         #expect(!release.flags.contains(.maskControl))
     }
+
+    @Test func shiftSpaceLanguageToggleIsHandledByTheTap() throws {
+        let rule = ShortcutRule(key: .space, modifiers: [.shift], action: .toggleInputSource)
+        let engine = KeyboardRemappingEngine(languageShortcuts: [rule])
+        let press = try event(kVK_Space, flags: .maskShift)
+        #expect(engine.transform(type: .keyDown, event: press, finderContext: .otherApplication) == nil)
+        let plainSpace = try event(kVK_Space, flags: [])
+        #expect(engine.transform(type: .keyDown, event: plainSpace, finderContext: .otherApplication) != nil)
+    }
 }

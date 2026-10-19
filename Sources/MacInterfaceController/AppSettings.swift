@@ -199,6 +199,7 @@ final class AppSettings: ObservableObject {
                                           windowSwitcherEnabled: windowSwitcherEnabled,
                                           windowsEditorMode: windowsEditorMode,
                                           windowsCtrlIsCommand: swapCommandControl,
+                                          languageShortcuts: shortcuts,
                                           macrosEnabled: shortcuts.contains { $0.isEnabled && $0.action == .macro })
         accessibilityGranted = engine.accessibilityGranted
         inputMonitoringGranted = engine.inputMonitoringGranted
@@ -208,8 +209,10 @@ final class AppSettings: ObservableObject {
             configureIndependentLanguageShortcuts()
             return
         }
-        shortcutError = HotKeyCenter.shared.configure(shortcuts)
-        activeShortcutIDs = HotKeyCenter.shared.registeredRuleIDs
+        // The event tap now handles the language toggle, so Carbon must not fire it a second time.
+        let tapHandled = Set(LanguageShortcutPolicy.independentRules(from: shortcuts).map(\.id))
+        shortcutError = HotKeyCenter.shared.configure(shortcuts.filter { !tapHandled.contains($0.id) })
+        activeShortcutIDs = HotKeyCenter.shared.registeredRuleIDs.union(tapHandled)
         HotCornerMonitor.shared.configure(corners)
         engineRunning = true
     }

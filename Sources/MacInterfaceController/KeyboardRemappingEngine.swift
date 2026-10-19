@@ -11,6 +11,8 @@ final class KeyboardRemappingEngine {
     private var swapCommandControl = false
     private var windowsFinderMode = false
     private var windowsEditorMode = false
+    /// Shift/Option-only shortcuts that Carbon hot keys no longer deliver on current macOS.
+    private var languageShortcuts: [(keyCode: Int, modifiers: CGEventFlags)] = []
     /// With the Ctrl/Cmd swap on, the key a Windows user calls Ctrl reaches the tap as Command.
     private var windowsCtrlIsCommand = false
     private var manualAccessibilityPIDs: Set<pid_t> = []
@@ -27,11 +29,12 @@ final class KeyboardRemappingEngine {
     enum FinderContext { case files, text, otherApplication }
 
     init(swapCommandControl: Bool = false, windowsFinderMode: Bool = false, finderFeatures: Set<FinderFeature> = Set(FinderFeature.allCases),
-         windowSwitcherEnabled: Bool = false, windowsEditorMode: Bool = false, windowsCtrlIsCommand: Bool = false, windowSwitcher: WindowSwitching = WindowSwitcherController.shared) {
+         windowSwitcherEnabled: Bool = false, windowsEditorMode: Bool = false, windowsCtrlIsCommand: Bool = false, languageShortcuts: [ShortcutRule] = [], windowSwitcher: WindowSwitching = WindowSwitcherController.shared) {
         self.swapCommandControl = swapCommandControl
         self.windowsFinderMode = windowsFinderMode
         self.windowsEditorMode = windowsEditorMode
         self.windowsCtrlIsCommand = windowsCtrlIsCommand
+        self.languageShortcuts = Self.tapHandledLanguageShortcuts(languageShortcuts)
         self.finderFeatures = finderFeatures
         self.windowSwitcherEnabled = windowSwitcherEnabled
         self.windowSwitcher = windowSwitcher
@@ -73,6 +76,7 @@ final class KeyboardRemappingEngine {
         windowSwitcherEnabled: Bool,
         windowsEditorMode: Bool = false,
         windowsCtrlIsCommand: Bool = false,
+        languageShortcuts: [ShortcutRule] = [],
         macrosEnabled: Bool = false
     ) -> String? {
         if self.windowsFinderMode != windowsFinderMode || self.finderFeatures != finderFeatures { finderCut.cancel() }
@@ -83,8 +87,9 @@ final class KeyboardRemappingEngine {
         self.windowSwitcherEnabled = windowSwitcherEnabled
         self.windowsEditorMode = windowsEditorMode
         self.windowsCtrlIsCommand = windowsCtrlIsCommand
+        self.languageShortcuts = Self.tapHandledLanguageShortcuts(languageShortcuts)
 
-        guard swapCommandControl || windowsFinderMode || windowSwitcherEnabled || windowsEditorMode || macrosEnabled else {
+        guard swapCommandControl || windowsFinderMode || windowSwitcherEnabled || windowsEditorMode || macrosEnabled || !self.languageShortcuts.isEmpty else {
             stop()
             return nil
         }
@@ -175,6 +180,18 @@ final class KeyboardRemappingEngine {
         // resulting macOS key meaning, never the original physical modifier.
         if swapCommandControl { applyCommandControlSwap(to: event) }
 
+        if type == .keyDown, !languageShortcuts.isEmpty {
+            let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+            let modifiers = relevantModifiers(event.flags)
+            if languageShortcuts.contains(where: { $0.keyCode == keyCode && $0.modifiers == modifiers }) {
+                if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
+                    Task { @MainActor in ActionRunner.run(.toggleInputSource) }
+                }
+                consumedKeys.insert(keyCode)
+                return nil
+            }
+        }
+
         if windowSwitcherEnabled {
             let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
             let modifiers = relevantModifiers(event.flags)
@@ -248,6 +265,16 @@ final class KeyboardRemappingEngine {
             }
         }
         return Unmanaged.passUnretained(event)
+    }
+
+    /// Language toggles without Command/Control. Carbon hot keys with only Shift/Option never fire on this macOS.
+    static func tapHandledLanguageShortcuts(_ rules: [ShortcutRule]) -> [(keyCode: Int, modifiers: CGEventFlags)] {
+        LanguageShortcutPolicy.independentRules(from: rules).map { rule in
+            var flags = CGEventFlags()
+            if rule.modifiers.contains(.shift) { flags.insert(.maskShift) }
+            if rule.modifiers.contains(.option) { flags.insert(.maskAlternate) }
+            return (Int(rule.key.keyCode), flags)
+        }
     }
 
     static func isWindowCloseShortcut(keyCode: Int, modifiers: CGEventFlags) -> Bool {
