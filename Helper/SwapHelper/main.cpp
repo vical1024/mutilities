@@ -51,6 +51,7 @@ using client_t = drv::virtual_hid_device_service::client;
 static std::mutex g_mutex;
 static client_t* g_client = nullptr;
 static std::atomic<bool> g_ready(false);
+static std::atomic<bool> g_pointReady(false);  // virtual pointing device, used to forward a keyboard's own pointer
 static bool g_killRequested = false;  // kill chord seen; acted on in tick() (not inside the device callback)
 static bool g_denied = false;         // IOHIDDeviceOpen returned kIOReturnNotPermitted: Input Monitoring is missing
 static bool g_log = false;
@@ -106,6 +107,39 @@ static void post() {
   g_client->async_post_report(r);
 }
 
+// Keyboards that also carry a pointer (HHKB Studio's pointing stick, a mouse with a keyboard interface) are
+// seized as a whole, so their mouse input has to be forwarded through a virtual pointing device.
+static uint32_t g_buttons = 0;
+static void postPointer(int dx, int dy, int wheel, int pan) {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  if (!g_client || !g_pointReady) return;
+  auto clamp = [](int v) { return static_cast<uint8_t>(static_cast<int8_t>(v < -127 ? -127 : v > 127 ? 127 : v)); };
+  do {
+    rep::pointing_input r;
+    for (int b = 1; b <= 32; ++b)
+      if (g_buttons & (1u << (b - 1))) r.buttons.insert(b);
+    r.x = clamp(dx); r.y = clamp(dy); r.vertical_wheel = clamp(wheel); r.horizontal_wheel = clamp(pan);
+    g_client->async_post_report(r);
+    auto rest = [](int v) { return v < -127 ? v + 127 : v > 127 ? v - 127 : 0; };
+    dx = rest(dx); dy = rest(dy); wheel = rest(wheel); pan = rest(pan);
+  } while (dx || dy || wheel || pan);
+}
+
+// Returns true when the value was pointer input (and has been forwarded).
+static bool forwardPointer(uint32_t page, uint32_t u, IOHIDValueRef value) {
+  int v = static_cast<int>(IOHIDValueGetIntegerValue(value));
+  if (page == 0x09 && u >= 1 && u <= 32) {
+    if (v) g_buttons |= 1u << (u - 1); else g_buttons &= ~(1u << (u - 1));
+    postPointer(0, 0, 0, 0);
+    return true;
+  }
+  if (page == 0x01 && u == 0x30) { if (v) postPointer(v, 0, 0, 0); return true; }
+  if (page == 0x01 && u == 0x31) { if (v) postPointer(0, v, 0, 0); return true; }
+  if (page == 0x01 && u == 0x38) { if (v) postPointer(0, 0, v, 0); return true; }
+  if (page == 0x0C && u == 0x238) { if (v) postPointer(0, 0, 0, v); return true; }
+  return false;
+}
+
 static bool isOtherPage(uint32_t page) { return page == 0x0C || page == 0xFF || page == 0xFF01 || page == 0x01; }
 
 static void postOther(uint32_t page) {
@@ -128,6 +162,8 @@ static void releaseVirtualKeys() {
   }
   post();
   for (uint32_t page : {0x0Cu, 0xFFu, 0xFF01u, 0x01u}) postOther(page);
+  g_buttons = 0;
+  postPointer(0, 0, 0, 0);
 }
 
 // One physical keyboard. While not seized it is still opened (non-exclusively) so its key events keep
@@ -138,6 +174,7 @@ struct Dev {
   bool seized = false;
   CFAbsoluteTime nextTry = 0;
   std::string lastDeferReason;
+  bool hasPointer = false;  // also exposes a mouse/pointer collection
   std::set<uint64_t> pressed;  // (page << 32) | usage for keyboard keys, modifiers and Fn that are down
 };
 
@@ -156,6 +193,7 @@ static void onValue(void* ctx, IOReturn, void*, IOHIDValueRef value) {
   auto held = [&](uint32_t usage) { return dev->pressed.count((uint64_t(kHIDPage_KeyboardOrKeypad) << 32) | usage) != 0; };
   if (down && held(0xE1) && held(0xE5) && held(0x29)) g_killRequested = true;  // LShift + RShift + Esc
   if (page != kHIDPage_KeyboardOrKeypad) {
+    if (forwardPointer(page, u, value)) return;
     uint32_t maxUsage = page == 0x0C ? 768 : 255;
     if (!isOtherPage(page) || u == 0 || u > maxUsage) return;  // skip array/padding elements
     if (page == 0xFF && u == 3) g_fnDown = down;
@@ -200,10 +238,6 @@ static void onValue(void* ctx, IOReturn, void*, IOHIDValueRef value) {
 //
 static std::vector<std::unique_ptr<Dev>> g_devs;
 static std::vector<std::string> g_match;
-// Keyboards that also expose a pointer (mouse/pointing stick, e.g. a BLE keyboard or mouse with a keyboard
-// interface). A seize takes the whole device and only keys are forwarded, so its pointer would die.
-// While any exists nothing is seized and the app falls back to its event-tap swap.
-static std::vector<std::string> g_skipped;
 static std::string g_controlDir;
 static bool g_all = false;            // every physical keyboard (except the virtual one)
 static std::atomic<bool> g_restart(false);  // exit so launchd starts a fresh helper
@@ -239,7 +273,7 @@ static int numProp(IOHIDDeviceRef d, CFStringRef key) {
 }
 
 static void seize(Dev& dev, CFAbsoluteTime now) {
-  if (!g_ready) return;
+  if (!g_ready || (dev.hasPointer && !g_pointReady)) return;  // never take a pointer we cannot forward
   if (!dev.pressed.empty()) {
     uint64_t k = *dev.pressed.begin();
     char buf[96];
@@ -298,8 +332,7 @@ static void writeStatus(bool lease, bool off) {
   static CFAbsoluteTime lastWrite = 0;
   bool anySeized = false;
   for (auto& p : g_devs) anySeized = anySeized || p->seized;
-  std::string st = g_devs.empty() && g_skipped.empty() ? "no-keyboard" : off ? "disabled" : !g_skipped.empty() ? "unsupported"
-                 : anySeized ? "active" : g_denied ? "denied"
+  std::string st = g_devs.empty() ? "no-keyboard" : off ? "disabled" : anySeized ? "active" : g_denied ? "denied"
                  : !g_ready ? "starting" : lease ? "waiting" : "idle";
   CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
   if (st == last && now - lastWrite < 1.0) return;  // the mtime doubles as a heartbeat
@@ -332,7 +365,8 @@ static void tick(CFRunLoopTimerRef, void*) {
       if (off) release(dev, "disable file present");
       else if (!lease) release(dev, "lease expired");
       else if (!g_ready) release(dev, "virtual keyboard not ready");
-    } else if (lease && !off && g_skipped.empty() && now >= dev.nextTry) {
+      else if (dev.hasPointer && !g_pointReady) release(dev, "virtual pointing device not ready");
+    } else if (lease && !off && now >= dev.nextTry) {
       seize(dev, now);
     }
   }
@@ -441,12 +475,14 @@ int main(int argc, char** argv) {
     drv::virtual_hid_device_service::virtual_hid_keyboard_parameters p;
     p.set_country_code(pqrs::hid::country_code::us);
     client->async_virtual_hid_keyboard_initialize(p);
+    client->async_virtual_hid_pointing_initialize();
   });
   client->error_occurred.connect([](auto&& e) { logf("error_occurred " + std::to_string((int)e.value())); });
-  client->closed.connect([] { logf("client closed"); g_ready = false; });
+  client->closed.connect([] { logf("client closed"); g_ready = false; g_pointReady = false; });
   client->connect_failed.connect([](auto&& e) { logf("connect_failed " + std::to_string((int)e.value())); g_ready = false; });
   client->driver_version_mismatched.connect([](auto&& v) { if (v) logf("driver_version_mismatched"); });
   client->virtual_hid_keyboard_ready.connect([](auto&& r) { logf(std::string("virtual keyboard ready ") + (r ? "1" : "0")); g_ready = r; });
+  client->virtual_hid_pointing_ready.connect([](auto&& r) { logf(std::string("virtual pointing ready ") + (r ? "1" : "0")); g_pointReady = r; });
   { std::lock_guard<std::mutex> lock(g_mutex); g_client = client.get(); }
   client->async_start();
 
@@ -458,15 +494,10 @@ int main(int argc, char** argv) {
     IOObjectRelease(svc);
     if (!d) continue;
     if (numProp(d, CFSTR(kIOHIDPrimaryUsagePageKey)) != 1 || numProp(d, CFSTR(kIOHIDPrimaryUsageKey)) != 6 || !wanted(d)) { CFRelease(d); continue; }
-    if (hasPointer(d)) {
-      g_skipped.push_back(prop(d, CFSTR(kIOHIDProductKey)));
-      logf("keyboard '" + g_skipped.back() + "' also has a pointer; not seizing any keyboard (falling back to event-tap swap)");
-      CFRelease(d);
-      continue;
-    }
     auto dev = std::make_unique<Dev>();
     dev->ref = d;
     dev->name = prop(d, CFSTR(kIOHIDProductKey));
+    dev->hasPointer = hasPointer(d);
     IOHIDDeviceRegisterInputValueCallback(d, onValue, dev.get());
     IOHIDDeviceRegisterRemovalCallback(d, onDeviceRemoved, dev.get());
     IOHIDDeviceScheduleWithRunLoop(d, CFRunLoopGetCurrent(), kCFRunLoopDefaultMode);

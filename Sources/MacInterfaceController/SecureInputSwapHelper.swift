@@ -18,7 +18,6 @@ final class SecureInputSwapHelper {
         case inputMonitoringRequired
         case disabledByShortcut
         case waiting
-        case unsupportedDevice        // a keyboard also has a pointer; seizing it would break the mouse
         case active
     }
 
@@ -98,7 +97,6 @@ final class SecureInputSwapHelper {
         case "active": return .active
         case "denied": return .inputMonitoringRequired
         case "disabled": return .disabledByShortcut
-        case "unsupported": return .unsupportedDevice
         case "waiting", "idle": return .waiting
         default: return .starting
         }
