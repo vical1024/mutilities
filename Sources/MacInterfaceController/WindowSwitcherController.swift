@@ -14,6 +14,27 @@ struct WindowDisplayItem: Identifiable {
     let windowTitle: String
     let icon: NSImage
     let isMinimized: Bool
+    var profile: String? = nil
+
+    /// Chromium browsers append " - <Browser> - <Profile>" to the window title once more than one profile exists.
+    static func splitProfile(title: String, appName: String, bundleIdentifier: String?) -> (title: String, profile: String?) {
+        let chromium = ["com.google.Chrome", "com.brave.Browser", "com.microsoft.edgemac", "com.vivaldi.Vivaldi", "company.thebrowser.Browser"]
+        guard let bundleIdentifier, chromium.contains(where: { bundleIdentifier.hasPrefix($0) }) else { return (title, nil) }
+        for dash in [" - ", " – "] {
+            let marker = "\(dash)\(appName)\(dash)"
+            if let range = title.range(of: marker, options: .backwards) {
+                let profile = String(title[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+                guard !profile.isEmpty else { continue }
+                return (String(title[..<range.lowerBound]), profile)
+            }
+        }
+        return (title, nil)
+    }
+
+    /// Stable hue per profile name so the same profile always gets the same colour.
+    static func hue(for name: String) -> Double {
+        Double(name.unicodeScalars.reduce(UInt32(5381)) { ($0 &* 33) &+ $1.value } % 360) / 360
+    }
 }
 
 final class WindowSwitcherViewModel: ObservableObject {
@@ -210,13 +231,15 @@ final class WindowSwitcherController: WindowSwitching {
                 let title = stringAttribute(element, kAXTitleAttribute as CFString) ?? "제목 없는 창"
                 let minimized = boolAttribute(element, kAXMinimizedAttribute as CFString)
                 let appName = application.localizedName ?? "알 수 없는 앱"
+                let split = WindowDisplayItem.splitProfile(title: title, appName: appName, bundleIdentifier: application.bundleIdentifier)
                 let icon = application.icon ?? NSImage(systemSymbolName: "app", accessibilityDescription: nil) ?? NSImage()
                 results.append(WindowTarget(
                     display: WindowDisplayItem(
                         applicationName: appName,
-                        windowTitle: title.isEmpty ? "제목 없는 창" : title,
+                        windowTitle: split.title.isEmpty ? "제목 없는 창" : split.title,
                         icon: icon,
-                        isMinimized: minimized
+                        isMinimized: minimized,
+                        profile: split.profile
                     ),
                     application: application,
                     element: element
@@ -345,6 +368,11 @@ private struct WindowSwitcherCard: View {
                         HStack(spacing: 5) {
                             Text(item.applicationName).font(.callout.weight(.regular))
                             if item.isMinimized { Image(systemName: "minus.square") }
+                            if let profile = item.profile {
+                                Label(profile, systemImage: "person.crop.circle.fill").font(.caption.weight(.medium)).lineLimit(1)
+                                    .padding(.horizontal, 7).padding(.vertical, 2)
+                                    .background(Color(hue: WindowDisplayItem.hue(for: profile), saturation: 0.55, brightness: 0.7), in: Capsule())
+                            }
                         }
                         Text(item.windowTitle).font(.caption).lineLimit(1).foregroundStyle(.white.opacity(0.68))
                     }

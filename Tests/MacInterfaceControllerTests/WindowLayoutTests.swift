@@ -112,4 +112,13 @@ struct WindowLayoutTests {
         let full = (0..<4).map { CGPoint(x: 10 + CGFloat($0) * 25, y: 20 + CGFloat($0) * 25) }
         #expect(place(full) == CGPoint(x: 10, y: 20))
     }
+
+    @Test func chromeProfileIsSplitFromTheWindowTitle() {
+        let split = WindowDisplayItem.splitProfile(title: "Inbox - Google Chrome - Logan (sonatus)", appName: "Google Chrome", bundleIdentifier: "com.google.Chrome")
+        #expect(split.title == "Inbox" && split.profile == "Logan (sonatus)")
+        let single = WindowDisplayItem.splitProfile(title: "Inbox - Google Chrome", appName: "Google Chrome", bundleIdentifier: "com.google.Chrome")
+        #expect(single.title == "Inbox - Google Chrome" && single.profile == nil)
+        let other = WindowDisplayItem.splitProfile(title: "a - Google Chrome - b", appName: "Notes", bundleIdentifier: "com.apple.Notes")
+        #expect(other.profile == nil)
+    }
 }
