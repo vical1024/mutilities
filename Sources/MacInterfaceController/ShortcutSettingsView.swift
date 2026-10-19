@@ -189,8 +189,8 @@ struct ShortcutRuleRow: View {
                 if rule.action == .windowCenterHeight {
                     HStack {
                         Text(L10n.text("화면 높이"))
-                        Slider(value: Binding(get: { rule.windowHeightPercent ?? 90 }, set: { rule.windowHeightPercent = $0.rounded() }), in: 30...100)
-                        Text(L10n.text("\(Int(rule.windowHeightPercent ?? 90))%"))
+                        Slider(value: Binding(get: { rule.windowHeightPercent ?? 85 }, set: { rule.windowHeightPercent = $0.rounded() }), in: 30...100)
+                        Text(L10n.text("\(Int(rule.windowHeightPercent ?? 85))%"))
                             .monospacedDigit().frame(width: 45, alignment: .trailing)
                     }
                     HStack {

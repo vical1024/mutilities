@@ -137,7 +137,7 @@ final class WindowLayoutController: ObservableObject {
     private var cycleStep = 0
     private var cycleTime: TimeInterval = 0
 
-    func run(_ action: AppAction, heightPercent: Double = 90, widthPercent: Double? = nil) {
+    func run(_ action: AppAction, heightPercent: Double = 85, widthPercent: Double? = nil) {
         guard action.isWindowLayout else { return }
         lastError = nil
         do {

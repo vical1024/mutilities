@@ -12,7 +12,7 @@ enum ActionRunner {
             ApplicationToggleController.shared.toggle(rule.targetApplication)
         } else if rule.action.isWindowLayout {
             guard !MacroRunner.shared.isRunning else { return }
-            WindowLayoutController.shared.run(rule.action, heightPercent: rule.windowHeightPercent ?? 90, widthPercent: rule.windowWidthPercent)
+            WindowLayoutController.shared.run(rule.action, heightPercent: rule.windowHeightPercent ?? 85, widthPercent: rule.windowWidthPercent)
         } else { run(rule.action) }
     }
 
