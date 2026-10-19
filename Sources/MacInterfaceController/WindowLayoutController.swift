@@ -61,7 +61,7 @@ enum WindowLayoutGeometry {
     /// Quick repeats of one shortcut walk through: centered, left half, right half, fill.
     static let cycleLength = 4
 
-    static let cascadeOffset: CGFloat = 20
+    static let cascadeOffset: CGFloat = 25
 
     /// First step of the cycle: top-left of the screen, then down-right by `cascadeOffset` for each
     /// window already sitting at that spot. If every spot is taken it wraps around.
