@@ -92,13 +92,35 @@ final class SecureInputSwapHelper {
         // The helper rewrites `status` at least once a second; an old file means it is not running.
         guard let modified = (try? FileManager.default.attributesOfItem(atPath: path("status")))?[.modificationDate] as? Date,
               Date().timeIntervalSince(modified) < 5,
-              let text = try? String(contentsOfFile: path("status"), encoding: .utf8) else { return .starting }
+              let text = try? String(contentsOfFile: path("status"), encoding: .utf8) else {
+            healIfNeeded()
+            return .starting
+        }
+        staleSince = nil
         switch text.trimmingCharacters(in: .whitespacesAndNewlines) {
         case "active": return .active
         case "denied": return .inputMonitoringRequired
         case "disabled": return .disabledByShortcut
         case "waiting", "idle": return .waiting
         default: return .starting
+        }
+    }
+
+    /// A rebuilt app has a new binary, and launchd then refuses to start the registered daemon (EX_CONFIG)
+    /// until it is registered again. A helper that stays silent while approved is re-registered.
+    private var staleSince: Date?
+    private var lastHeal: Date?
+    private func healIfNeeded() {
+        let now = Date()
+        if staleSince == nil { staleSince = now }
+        guard service.status == .enabled, now.timeIntervalSince(staleSince!) > 10,
+              lastHeal.map({ now.timeIntervalSince($0) > 120 }) ?? true else { return }
+        lastHeal = now
+        let service = service
+        Task.detached {
+            try? await service.unregister()
+            try? await Task.sleep(nanoseconds: 1_500_000_000)  // registering immediately after is rejected
+            try? service.register()
         }
     }
 
