@@ -156,30 +156,55 @@ actor SettingsHistory {
         } else {
             desired = active.target.system.preferences.filter { $0.address.domain == "com.apple.dock" && SystemDefaultsService.dockKeys.contains($0.address.key) }
         }
-        let currentScope = SystemSettingsBackup(createdAt: Date(), machineName: "Dock", preferences: old, hidMappings: [])
-        let targetScope = SystemSettingsBackup(createdAt: Date(), machineName: "Dock", preferences: desired, hidMappings: [])
+        try transition(old: old, desired: desired, label: "Dock", capture: backend.captureDock)
+    }
+
+    /// Replaces the current values of one managed preference group with `desired`, rolling back on any failure.
+    private func transition(old: [PreferenceBackup], desired: [PreferenceBackup], label: String,
+                            capture: () throws -> [PreferenceBackup]) throws {
+        let currentScope = SystemSettingsBackup(createdAt: Date(), machineName: label, preferences: old, hidMappings: [])
+        let targetScope = SystemSettingsBackup(createdAt: Date(), machineName: label, preferences: desired, hidMappings: [])
         if try currentScope.hasSameSettings(as: targetScope) { return }
         do {
             for item in old { try backend.write(item, removing: true) }
             for item in desired { try backend.write(item, removing: false) }
             try backend.finish()
-            let actual = try backend.captureDock()
-            guard try SystemSettingsBackup(createdAt: Date(), machineName: "Dock", preferences: actual, hidMappings: []).hasSameSettings(as: targetScope) else { throw SystemDefaultsError.commandFailed("Dock 적용 상태를 확인하지 못했습니다.") }
+            let actual = try capture()
+            guard try SystemSettingsBackup(createdAt: Date(), machineName: label, preferences: actual, hidMappings: []).hasSameSettings(as: targetScope) else { throw SystemDefaultsError.commandFailed("\(label) 적용 상태를 확인하지 못했습니다.") }
         } catch {
             let original = error
             do {
-                for item in try backend.captureDock() { try backend.write(item, removing: true) }
+                for item in try capture() { try backend.write(item, removing: true) }
                 for item in old { try backend.write(item, removing: false) }
                 try backend.finish()
-                let restored = SystemSettingsBackup(createdAt: Date(), machineName: "Dock", preferences: try backend.captureDock(), hidMappings: [])
+                let restored = SystemSettingsBackup(createdAt: Date(), machineName: label, preferences: try capture(), hidMappings: [])
                 guard try restored.hasSameSettings(as: currentScope) else {
-                    throw SystemDefaultsError.commandFailed("Dock 자동 복구 결과를 확인하지 못했습니다.")
+                    throw SystemDefaultsError.commandFailed("\(label) 자동 복구 결과를 확인하지 못했습니다.")
                 }
             } catch {
-                throw SystemDefaultsError.commandFailed("Dock 변경 실패: \(original.localizedDescription)\n자동 복구 실패: \(error.localizedDescription)")
+                throw SystemDefaultsError.commandFailed("\(label) 변경 실패: \(original.localizedDescription)\n자동 복구 실패: \(error.localizedDescription)")
             }
             throw original
         }
+    }
+
+    /// While the app's own hot corners run, macOS' corner actions would fire as well. Corners the app uses are set to
+    /// "disabled" and the rest return to the macOS default; `nil` restores what was there when the session started.
+    func applyHotCorners(_ appCorners: Set<CornerPosition>?) throws {
+        guard let active else { throw SystemDefaultsError.commandFailed("시작 백업이 완료되지 않았습니다.") }
+        let old = try backend.captureHotCorners()
+        let desired: [PreferenceBackup]
+        if let appCorners {
+            desired = try appCorners.sorted { $0.rawValue < $1.rawValue }.flatMap { position -> [PreferenceBackup] in
+                try [("corner", 1), ("modifier", 0)].map { suffix, value in
+                    PreferenceBackup(address: .init(domain: "com.apple.dock", currentHost: false, key: "wvous-\(position.dockPrefix)-\(suffix)"),
+                                     value: try PropertyListSerialization.data(fromPropertyList: ["value": value], format: .binary, options: 0))
+                }
+            }
+        } else {
+            desired = active.target.system.preferences.filter { $0.address.domain == "com.apple.dock" && SystemDefaultsService.hotCornerKeys.contains($0.address.key) }
+        }
+        try transition(old: old, desired: desired, label: "핫 코너", capture: backend.captureHotCorners)
     }
 
     func list() throws -> [SettingsSnapshot] {

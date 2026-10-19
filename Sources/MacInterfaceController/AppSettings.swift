@@ -24,6 +24,9 @@ final class AppSettings: ObservableObject {
     private lazy var dockUpdates = LatestSettingsUpdate<DockConfiguration?>(
         write: { try await SettingsHistory.shared.applyDock($0) },
         onError: { [weak self] error in self?.historyError = error.localizedDescription })
+    private lazy var hotCornerUpdates = LatestSettingsUpdate<Set<CornerPosition>?>(
+        write: { try await SettingsHistory.shared.applyHotCorners($0) },
+        onError: { [weak self] error in self?.historyError = error.localizedDescription })
     private var terminating = false
     private var operationInProgress = false
     private var operationWaiters: [CheckedContinuation<Void, Never>] = []
@@ -162,6 +165,7 @@ final class AppSettings: ObservableObject {
         guard hasFinishedInitialization, sessionReady, !terminating, !isWorking else { return }
         let desiredDock = engineEnabled && !isWorking ? dockConfiguration : nil
         dockUpdates.submit(desiredDock)
+        hotCornerUpdates.submit(engineEnabled && !isWorking ? Set(corners.filter(\.isEnabled).map(\.position)) : nil)
         defer { publishRuntimeStatus() }
         FunctionKeyController.shared.apply(engineEnabled && !isWorking ? standardFunctionKeys : nil)
         DisplayController.shared.apply(engineEnabled && !isWorking && autoDisableBuiltInDisplay)
@@ -298,6 +302,7 @@ final class AppSettings: ObservableObject {
         }
         isWorking = true
         await dockUpdates.flush()
+        await hotCornerUpdates.flush()
         let previousPhase = setupPhase
         DisplayController.shared.apply(false)
         systemGeneration = UUID()
@@ -315,6 +320,7 @@ final class AppSettings: ObservableObject {
         isWorking = false
         await refreshSystemState()
         dockUpdates.invalidate()
+        hotCornerUpdates.invalidate()
         apply()
     }
 
@@ -349,6 +355,7 @@ final class AppSettings: ObservableObject {
         DisplayController.shared.apply(false)
         setPhase(.needsSetup)
         await dockUpdates.flush()
+        await hotCornerUpdates.flush()
         do {
             try await SystemDefaultsService.restoreBackup(at: url)
             try await SettingsHistory.shared.rebase(app: configurationSnapshot)
@@ -425,6 +432,7 @@ final class AppSettings: ObservableObject {
         terminating = true
         isWorking = true
         await dockUpdates.flush()
+        await hotCornerUpdates.flush()
         DisplayController.shared.shutdown()
         stopEngines()
         stopSwapHelper()
@@ -470,6 +478,7 @@ final class AppSettings: ObservableObject {
         isWorking = true
         historyError = nil
         await dockUpdates.flush()
+        await hotCornerUpdates.flush()
         do {
             _ = try await SettingsHistory.shared.checkpoint(app: configurationSnapshot, name: name)
             historyMessage = "현재 시점의 설정을 백업했습니다."
@@ -492,6 +501,7 @@ final class AppSettings: ObservableObject {
         isWorking = true
         historyError = nil
         await dockUpdates.flush()
+        await hotCornerUpdates.flush()
         stopEngines()
         stopSwapHelper()
         FunctionKeyController.shared.apply(nil)
@@ -518,6 +528,7 @@ final class AppSettings: ObservableObject {
             }
             historyMessage = "선택한 시점으로 복원했습니다."
             dockUpdates.invalidate()
+            hotCornerUpdates.invalidate()
         } catch { historyError = error.localizedDescription }
         isWorking = false
         await refreshKeyMappingState()

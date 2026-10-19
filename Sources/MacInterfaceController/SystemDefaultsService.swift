@@ -111,6 +111,7 @@ struct SystemSettingsBackup: Codable, Equatable, Sendable {
 protocol SystemSettingsBackend {
     func capture() throws -> SystemSettingsBackup
     func captureDock() throws -> [PreferenceBackup]
+    func captureHotCorners() throws -> [PreferenceBackup]
     func write(_ item: PreferenceBackup, removing: Bool) throws
     func setHIDMappings(_ mappings: [HIDMapping]) throws
     func finish() throws
@@ -119,6 +120,9 @@ protocol SystemSettingsBackend {
 extension SystemSettingsBackend {
     func captureDock() throws -> [PreferenceBackup] {
         try capture().preferences.filter { $0.address.domain == "com.apple.dock" && SystemDefaultsService.dockKeys.contains($0.address.key) }
+    }
+    func captureHotCorners() throws -> [PreferenceBackup] {
+        try capture().preferences.filter { $0.address.domain == "com.apple.dock" && SystemDefaultsService.hotCornerKeys.contains($0.address.key) }
     }
 }
 
@@ -202,14 +206,17 @@ struct LocalSystemSettingsBackend: SystemSettingsBackend {
         try snapshot().backup
     }
 
-    func captureDock() throws -> [PreferenceBackup] {
+    func captureDock() throws -> [PreferenceBackup] { try captureDockDomain(keys: SystemDefaultsService.dockKeys) }
+    func captureHotCorners() throws -> [PreferenceBackup] { try captureDockDomain(keys: SystemDefaultsService.hotCornerKeys) }
+
+    private func captureDockDomain(keys: Set<String>) throws -> [PreferenceBackup] {
         var result: [PreferenceBackup] = []
         let domain = "com.apple.dock" as CFString
         for currentHost in [false, true] {
             guard CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser, host(currentHost)) else {
                 throw SystemDefaultsError.commandFailed("Dock 설정을 읽지 못했습니다.")
             }
-            for key in SystemDefaultsService.dockKeys.sorted() {
+            for key in keys.sorted() {
                 guard let value = CFPreferencesCopyValue(key as CFString, domain, kCFPreferencesCurrentUser, host(currentHost)) else { continue }
                 result.append(PreferenceBackup(address: .init(domain: "com.apple.dock", currentHost: currentHost, key: key),
                     value: try PropertyListSerialization.data(fromPropertyList: ["value": value], format: .binary, options: 0)))

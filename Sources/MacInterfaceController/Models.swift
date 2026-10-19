@@ -159,6 +159,15 @@ enum CornerPosition: String, Codable, CaseIterable, Identifiable {
     case topLeft, topRight, bottomLeft, bottomRight
 
     var id: String { rawValue }
+    /// Key infix of macOS' `wvous-<infix>-corner` Dock preferences.
+    var dockPrefix: String {
+        switch self {
+        case .topLeft: "tl"
+        case .topRight: "tr"
+        case .bottomLeft: "bl"
+        case .bottomRight: "br"
+        }
+    }
     var title: String {
         switch self {
         case .topLeft: "왼쪽 위"
