@@ -10,7 +10,7 @@ struct KeyboardSettingsView: View {
     @State private var showEditor = false
     private static let editorKeys: [(String, String)] = [
         ("Home / End", "줄 처음 / 끝으로 (입력창)"), ("Ctrl+Home / End", "문서 처음 / 끝으로 (입력창)"),
-        ("Ctrl+← / →", "단어 단위 이동 (입력창)"), ("Ctrl+Page Up / Down", "이전 / 다음 탭")]
+        ("Ctrl+← / →", "단어 단위 이동 (어디서든)"), ("Ctrl+Page Up / Down", "이전 / 다음 탭")]
 
     var body: some View {
         let _ = uiLanguage

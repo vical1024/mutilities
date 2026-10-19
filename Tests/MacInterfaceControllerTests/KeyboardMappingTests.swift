@@ -133,9 +133,9 @@ struct LogicalShortcutTests {
         #expect(try mapped(kVK_End, [.maskControl, .maskShift], text: true) == (kVK_DownArrow, [.maskCommand, .maskShift]))
         #expect(try mapped(kVK_LeftArrow, .maskControl, text: true) == (kVK_LeftArrow, [.maskAlternate]))
         #expect(try mapped(kVK_RightArrow, [.maskControl, .maskShift], text: true) == (kVK_RightArrow, [.maskAlternate, .maskShift]))
-        // Outside text inputs the keys keep their macOS meaning (page scroll, Space switching).
+        // Outside text inputs Home and friends keep their macOS meaning (page scroll).
         #expect(try mapped(kVK_Home, [], text: false) == (kVK_Home, []))
-        #expect(try mapped(kVK_LeftArrow, .maskControl, text: false) == (kVK_LeftArrow, .maskControl))
+        #expect(try mapped(kVK_LeftArrow, .maskControl, text: false) == (kVK_LeftArrow, .maskAlternate))
         // Tab switching does not depend on focus.
         #expect(try mapped(kVK_PageUp, .maskControl, text: false) == (kVK_Tab, [.maskControl, .maskShift]))
         #expect(try mapped(kVK_PageDown, .maskControl, text: false) == (kVK_Tab, .maskControl))

@@ -385,14 +385,17 @@ final class KeyboardRemappingEngine {
             return true
         }
 
+        if base == .maskControl, keyCode == kVK_LeftArrow || keyCode == kVK_RightArrow {
+            rewrite(event, keyCode: keyCode, modifiers: shift ? [.maskAlternate, .maskShift] : [.maskAlternate])
+            return true
+        }
+
         let target: (Int, CGEventFlags)?
         switch (keyCode, base) {
         case (kVK_Home, []): target = (kVK_LeftArrow, [.maskCommand])
         case (kVK_End, []): target = (kVK_RightArrow, [.maskCommand])
         case (kVK_Home, .maskControl): target = (kVK_UpArrow, [.maskCommand])
         case (kVK_End, .maskControl): target = (kVK_DownArrow, [.maskCommand])
-        case (kVK_LeftArrow, .maskControl): target = (kVK_LeftArrow, [.maskAlternate])
-        case (kVK_RightArrow, .maskControl): target = (kVK_RightArrow, [.maskAlternate])
         default: target = nil
         }
         guard let (mappedKey, mappedModifiers) = target, textFocused ?? focusedElementIsTextInput() else { return false }
