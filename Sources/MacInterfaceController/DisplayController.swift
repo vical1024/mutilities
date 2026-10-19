@@ -27,6 +27,7 @@ final class DisplayController: ObservableObject {
     static let wakeGrace: TimeInterval = 30
     private var graceUntil = Date.distantPast
     private var graceTimer: Timer?
+    private var tickCount = 0
 
     private var screenObserver: NSObjectProtocol?
 
@@ -82,6 +83,7 @@ final class DisplayController: ObservableObject {
     /// and start a fresh one.
     private func restoreIfExternalGone() {
         guard process != nil, isRunning, !isStopping, builtInOn == false, Self.externalDisplayCount() == 0 else { return }
+        note("no external screen left; restarting guard to restore the built-in panel")
         restartAfterStop = requested
         stop()
     }
@@ -94,7 +96,7 @@ final class DisplayController: ObservableObject {
 
     private func startHeartbeat() {
         guard timer == nil else { return }
-        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -215,7 +217,8 @@ final class DisplayController: ObservableObject {
             stop()
             return
         }
-        restoreIfExternalGone()
+        tickCount += 1
+        if tickCount % 5 == 0 { restoreIfExternalGone() }  // the screen-change notification covers the immediate case
         if let input {
             var ping: UInt8 = 112
             if Darwin.write(input.fileHandleForWriting.fileDescriptor, &ping, 1) != 1 {
@@ -252,9 +255,22 @@ final class DisplayController: ObservableObject {
         }
     }
 
+    /// NSScreen is what this app's run loop keeps current; CGGetActiveDisplayList can lag behind a hotplug.
     private static func externalDisplayCount() -> Int {
-        guard let ids = try? LiveDisplayHardware.activeDisplays() else { return -1 }
-        return ids.filter { CGDisplayIsBuiltin($0) == 0 && CGDisplayIsOnline($0) != 0 }.count
+        NSScreen.screens.filter {
+            guard let number = $0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return false }
+            return CGDisplayIsBuiltin(number.uint32Value) == 0
+        }.count
+    }
+
+    private func note(_ message: String) {
+        guard let folder = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                                                        appropriateFor: nil, create: false)
+            .appendingPathComponent("MacInterfaceController", isDirectory: true),
+              let handle = try? FileHandle(forWritingTo: folder.appendingPathComponent("display-guard.log")) else { return }
+        _ = try? handle.seekToEnd()
+        handle.write(Data("\(ISO8601DateFormatter().string(from: Date())) app: \(message)\n".utf8))
+        try? handle.close()
     }
 
     private func refreshIdleState() {
