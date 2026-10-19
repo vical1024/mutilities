@@ -102,7 +102,8 @@ do {
         if state != lastState { note("\(state) externals=\(snapshot.externalIDs.sorted())"); lastState = state }
         emit(state)
         // Pump WindowServer notifications without depending on the app's run loop.
-        RunLoop.current.run(until: Date())
+        // A zero-length run is not enough to service the display notifications that refresh CGGetActiveDisplayList.
+        CFRunLoopRunInMode(.defaultMode, 0.05, false)
     }
     note("stopping (EOF/signal)")
     try activeSession.stop()
