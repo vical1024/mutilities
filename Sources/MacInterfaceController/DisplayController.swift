@@ -30,7 +30,16 @@ final class DisplayController: ObservableObject {
         refreshIdleState()
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
-                guard let self, self.process == nil else { return }
+                guard let self else { return }
+                if self.process != nil {
+                    // DisplayGuard's own display list never refreshes after a hotplug, but this app's does. When the last
+                    // external screen is gone, end the guard (its app-scoped change reverts) and start a fresh one.
+                    if self.isRunning, !self.isStopping, Self.externalDisplayCount() == 0 {
+                        self.restartAfterStop = self.requested
+                        self.stop()
+                    }
+                    return
+                }
                 self.refreshIdleState()
                 // The guard exits on any failure; an external display appearing again is the cue to resume.
                 if self.requested, !self.isStopping, self.error == nil, self.builtInOn == true, self.externalCount > 0 { self.start() }
@@ -199,6 +208,11 @@ final class DisplayController: ObservableObject {
                 }
             }
         }
+    }
+
+    private static func externalDisplayCount() -> Int {
+        guard let ids = try? LiveDisplayHardware.activeDisplays() else { return -1 }
+        return ids.filter { CGDisplayIsBuiltin($0) == 0 && CGDisplayIsOnline($0) != 0 }.count
     }
 
     private func refreshIdleState() {
