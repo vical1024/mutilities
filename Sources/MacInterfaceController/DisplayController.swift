@@ -23,23 +23,20 @@ final class DisplayController: ObservableObject {
     private var stopStarted: TimeInterval?
     private var recoveryHardware: LiveDisplayHardware?
     private var restartAfterStop = false
+    /// After wake the built-in panel stays on for this long before the guard may switch it off again.
+    static let wakeGrace: TimeInterval = 30
+    private var graceUntil = Date.distantPast
+    private var graceTimer: Timer?
 
     private var screenObserver: NSObjectProtocol?
 
     init() {
         refreshIdleState()
+        observeSleepAndWake()
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                if self.process != nil {
-                    // DisplayGuard's own display list never refreshes after a hotplug, but this app's does. When the last
-                    // external screen is gone, end the guard (its app-scoped change reverts) and start a fresh one.
-                    if self.isRunning, !self.isStopping, Self.externalDisplayCount() == 0 {
-                        self.restartAfterStop = self.requested
-                        self.stop()
-                    }
-                    return
-                }
+                if self.process != nil { self.restoreIfExternalGone(); return }
                 self.refreshIdleState()
                 // The guard exits on any failure; an external display appearing again is the cue to resume.
                 if self.requested, !self.isStopping, self.error == nil, self.builtInOn == true, self.externalCount > 0 { self.start() }
@@ -47,8 +44,51 @@ final class DisplayController: ObservableObject {
         }
     }
 
+    private func observeSleepAndWake() {
+        let center = NSWorkspace.shared.notificationCenter
+        center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                // The guard's app-scoped change ends with the process, so the panel is on when the Mac wakes.
+                self.restartAfterStop = false
+                self.stop()
+            }
+        }
+        center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.graceUntil = Date().addingTimeInterval(Self.wakeGrace)
+                self.restartAfterStop = false
+                self.stop()
+                self.scheduleStartAfterGrace()
+            }
+        }
+    }
+
+    private func scheduleStartAfterGrace() {
+        graceTimer?.invalidate()
+        guard requested else { return }
+        let remaining = max(0.1, graceUntil.timeIntervalSinceNow)
+        graceTimer = Timer.scheduledTimer(withTimeInterval: remaining, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.requested, self.process == nil else { return }
+                self.start()
+            }
+        }
+    }
+
+    /// DisplayGuard's own display list never refreshes after a hotplug, but this app's does. Once the guard has
+    /// switched the panel off and the last external screen is gone, end the guard (its app-scoped change reverts)
+    /// and start a fresh one.
+    private func restoreIfExternalGone() {
+        guard process != nil, isRunning, !isStopping, builtInOn == false, Self.externalDisplayCount() == 0 else { return }
+        restartAfterStop = requested
+        stop()
+    }
+
     deinit {
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
+        graceTimer?.invalidate()
         timer?.invalidate()
     }
 
@@ -93,6 +133,7 @@ final class DisplayController: ObservableObject {
     }
 
     private func start() {
+        if graceUntil.timeIntervalSinceNow > 0 { scheduleStartAfterGrace(); return }
         error = nil
         do {
             let id = try LiveDisplayHardware.activeBuiltInID()
@@ -174,6 +215,7 @@ final class DisplayController: ObservableObject {
             stop()
             return
         }
+        restoreIfExternalGone()
         if let input {
             var ping: UInt8 = 112
             if Darwin.write(input.fileHandleForWriting.fileDescriptor, &ping, 1) != 1 {
