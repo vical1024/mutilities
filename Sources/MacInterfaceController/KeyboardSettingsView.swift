@@ -45,6 +45,7 @@ struct KeyboardSettingsView: View {
                     }
                 }
             }
+            EnglishAssistSettingsView()
             GroupBox {
                 VStack(alignment: .leading, spacing: 14) {
                     FeatureGroupHeader(title: "Windows 스타일 Finder", isEnabled: settings.windowsFinderMode && !settings.finderFeatures.isEmpty) { enabled in
