@@ -170,8 +170,8 @@ final class KeyboardRemappingEngine {
             let modifiers = relevantModifiers(event.flags)
 
             if windowSwitcher.isVisible {
-                // Releasing Command opens the targeted window, like the native switcher.
-                if type == .flagsChanged && !modifiers.contains(.maskCommand) {
+                // Releasing Option opens the targeted window, like the native switcher.
+                if type == .flagsChanged && !modifiers.contains(.maskAlternate) {
                     windowSwitcher.commitSelection()
                     return Unmanaged.passUnretained(event)
                 }
@@ -237,12 +237,12 @@ final class KeyboardRemappingEngine {
 
     static func isWindowCloseShortcut(keyCode: Int, modifiers: CGEventFlags) -> Bool {
         keyCode == kVK_ANSI_W
-            && (modifiers.isEmpty || modifiers == .maskCommand || modifiers == [.maskCommand, .maskShift])
+            && (modifiers.isEmpty || modifiers == .maskAlternate || modifiers == [.maskAlternate, .maskShift])
     }
 
     static func isWindowSwitcherShortcut(keyCode: Int, modifiers: CGEventFlags) -> Bool {
-        keyCode == kVK_Tab && modifiers.contains(.maskCommand)
-            && modifiers.subtracting([.maskCommand, .maskShift]).isEmpty
+        keyCode == kVK_Tab && modifiers.contains(.maskAlternate)
+            && modifiers.subtracting([.maskAlternate, .maskShift]).isEmpty
     }
 
     private func applyCommandControlSwap(to event: CGEvent) {

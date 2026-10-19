@@ -133,12 +133,12 @@ struct WindowCloseTests {
     }
 
     @Test func closeUsesWAndAllowsHoldingSwitcherModifiers() {
-        for flags: CGEventFlags in [[], .maskCommand, [.maskCommand, .maskShift]] {
+        for flags: CGEventFlags in [[], .maskAlternate, [.maskAlternate, .maskShift]] {
             #expect(KeyboardRemappingEngine.isWindowCloseShortcut(keyCode: kVK_ANSI_W, modifiers: flags))
             #expect(!KeyboardRemappingEngine.isWindowCloseShortcut(keyCode: kVK_Delete, modifiers: flags))
             #expect(!KeyboardRemappingEngine.isWindowCloseShortcut(keyCode: kVK_ForwardDelete, modifiers: flags))
         }
-        for flags: CGEventFlags in [.maskControl, .maskAlternate, .maskShift] {
+        for flags: CGEventFlags in [.maskControl, .maskCommand, .maskShift] {
             #expect(!KeyboardRemappingEngine.isWindowCloseShortcut(keyCode: kVK_ANSI_W, modifiers: flags))
         }
     }

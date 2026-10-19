@@ -285,7 +285,7 @@ private struct WindowSwitcherOverlay: View {
             HStack {
                 Text(L10n.text("창 전환")).font(.body)
                 Spacer()
-                Text(L10n.text("⌘Tab / ←→ 선택  ·  ⌘ 떼면 열기")).font(.caption).foregroundStyle(.white.opacity(0.58))
+                Text(L10n.text("⌥Tab / ←→ 선택  ·  ⌥ 떼면 열기")).font(.caption).foregroundStyle(.white.opacity(0.58))
             }.foregroundStyle(.white.opacity(0.92)).padding(.horizontal, 6)
             Text(L10n.text("W 닫기  ·  Esc 취소")).font(.caption).foregroundStyle(.white.opacity(0.58)).padding(.horizontal, 6)
             if model.windows.isEmpty {
