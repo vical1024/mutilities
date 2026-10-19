@@ -106,10 +106,10 @@ struct WindowLayoutTests {
             WindowLayoutGeometry.cascadeTarget(visible: visible, heightPercent: 90, widthPercent: 90, occupiedOrigins: occupied).origin
         }
         #expect(place([]) == CGPoint(x: 10, y: 20))
-        #expect(place([CGPoint(x: 10, y: 20)]) == CGPoint(x: 42, y: 52))
-        #expect(place([CGPoint(x: 10, y: 20), CGPoint(x: 42, y: 52)]) == CGPoint(x: 74, y: 84))
-        // 80pt of slack below the window allows slots 0...2; a fourth window wraps to the start.
-        let full = [CGPoint(x: 10, y: 20), CGPoint(x: 42, y: 52), CGPoint(x: 74, y: 84)]
+        #expect(place([CGPoint(x: 10, y: 20)]) == CGPoint(x: 30, y: 40))
+        #expect(place([CGPoint(x: 10, y: 20), CGPoint(x: 30, y: 40)]) == CGPoint(x: 50, y: 60))
+        // 80pt of slack below the window allows slots 0...4; a sixth window wraps to the start.
+        let full = (0..<5).map { CGPoint(x: 10 + CGFloat($0) * 20, y: 20 + CGFloat($0) * 20) }
         #expect(place(full) == CGPoint(x: 10, y: 20))
     }
 }
