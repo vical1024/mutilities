@@ -423,7 +423,7 @@ extension L10n {
         "초기 설정도 완료해 주세요": "Complete initial setup",
         "초기 설정으로 이동": "Open setup",
         "최근 15회차": "Last 15 sessions",
-        "최대 확대 크기": "Magnified size",
+        "확대 배율": "Magnification",
         "추가": "Add",
         "추가 메뉴에서 새 동작을 선택하세요.": "Choose a new action from the Add menu.",
         "충돌": "Conflict",

@@ -35,15 +35,16 @@ struct DockSettingsView: View {
                 GroupBox(L10n.text("아이콘 크기")) {
                     VStack(spacing: 16) {
                         sizeRow("기본 크기", value: Binding(get: { tileSize }, set: { value in
+                            let scale = magnificationScale
                             tileSize = value
-                            if magnification, let value, let largeSize, largeSize < value { self.largeSize = value }
+                            if magnification, let value, largeSize != nil { self.largeSize = min(128, (value * scale).rounded()) }
                         }), fallback: 64, minimum: 16)
                         SettingsToggleRow(title: "마우스를 올리면 확대", symbol: "plus.magnifyingglass", isOn: $magnification)
                             .onChange(of: magnification) { _, enabled in
                                 if enabled, let tileSize, let largeSize, largeSize < tileSize { self.largeSize = tileSize }
                             }
                         if magnification {
-                            sizeRow("최대 확대 크기", value: $largeSize, fallback: 128, minimum: tileSize ?? 16)
+                            scaleRow()
                         }
                     }.padding(8)
                 }.disabled(!settings.sessionReady || settings.isWorking)
@@ -102,6 +103,20 @@ struct DockSettingsView: View {
             Slider(value: Binding(get: { min(128, max(minimum, value.wrappedValue ?? fallback)) }, set: { value.wrappedValue = $0.rounded() }), in: min(128, max(16, minimum))...128)
                 .accessibilityLabel(L10n.text(title))
             Text(L10n.text(value.wrappedValue.map { String(format: "%.0f", $0) } ?? "기본값")).monospacedDigit().frame(width: 55, alignment: .trailing)
+        }
+    }
+    /// Magnified size relative to the base size; the Dock still stores the absolute `largesize`.
+    private var magnificationScale: Double {
+        min(1.5, max(1, (largeSize ?? 128) / (tileSize ?? 64)))
+    }
+    private func scaleRow() -> some View {
+        HStack {
+            Text(L10n.text("확대 배율")).font(.body).frame(width: 110, alignment: .leading)
+            Slider(value: Binding(get: { magnificationScale }, set: { scale in
+                largeSize = min(128, ((tileSize ?? 64) * (scale * 20).rounded() / 20).rounded())
+            }), in: 1...1.5)
+                .accessibilityLabel(L10n.text("확대 배율"))
+            Text(String(format: "%.2f×", (magnificationScale * 20).rounded() / 20)).monospacedDigit().frame(width: 55, alignment: .trailing)
         }
     }
     private func timingRow(_ title: String, value: Binding<Double>) -> some View {
