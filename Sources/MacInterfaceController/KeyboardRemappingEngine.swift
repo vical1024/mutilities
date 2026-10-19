@@ -11,6 +11,8 @@ final class KeyboardRemappingEngine {
     private var swapCommandControl = false
     private var windowsFinderMode = false
     private var windowsEditorMode = false
+    /// With the Ctrl/Cmd swap on, the key a Windows user calls Ctrl reaches the tap as Command.
+    private var windowsCtrlIsCommand = false
     private var manualAccessibilityPIDs: Set<pid_t> = []
     private var finderFeatures = Set(FinderFeature.allCases)
     private var windowSwitcherEnabled = false
@@ -25,10 +27,11 @@ final class KeyboardRemappingEngine {
     enum FinderContext { case files, text, otherApplication }
 
     init(swapCommandControl: Bool = false, windowsFinderMode: Bool = false, finderFeatures: Set<FinderFeature> = Set(FinderFeature.allCases),
-         windowSwitcherEnabled: Bool = false, windowsEditorMode: Bool = false, windowSwitcher: WindowSwitching = WindowSwitcherController.shared) {
+         windowSwitcherEnabled: Bool = false, windowsEditorMode: Bool = false, windowsCtrlIsCommand: Bool = false, windowSwitcher: WindowSwitching = WindowSwitcherController.shared) {
         self.swapCommandControl = swapCommandControl
         self.windowsFinderMode = windowsFinderMode
         self.windowsEditorMode = windowsEditorMode
+        self.windowsCtrlIsCommand = windowsCtrlIsCommand
         self.finderFeatures = finderFeatures
         self.windowSwitcherEnabled = windowSwitcherEnabled
         self.windowSwitcher = windowSwitcher
@@ -69,6 +72,7 @@ final class KeyboardRemappingEngine {
         finderFeatures: Set<FinderFeature> = Set(FinderFeature.allCases),
         windowSwitcherEnabled: Bool,
         windowsEditorMode: Bool = false,
+        windowsCtrlIsCommand: Bool = false,
         macrosEnabled: Bool = false
     ) -> String? {
         if self.windowsFinderMode != windowsFinderMode || self.finderFeatures != finderFeatures { finderCut.cancel() }
@@ -78,6 +82,7 @@ final class KeyboardRemappingEngine {
         self.finderFeatures = finderFeatures
         self.windowSwitcherEnabled = windowSwitcherEnabled
         self.windowsEditorMode = windowsEditorMode
+        self.windowsCtrlIsCommand = windowsCtrlIsCommand
 
         guard swapCommandControl || windowsFinderMode || windowSwitcherEnabled || windowsEditorMode || macrosEnabled else {
             stop()
@@ -379,13 +384,14 @@ final class KeyboardRemappingEngine {
         let modifiers = relevantModifiers(event.flags)
         let shift = modifiers.contains(.maskShift)
         let base = modifiers.subtracting(.maskShift)
+        let ctrl: CGEventFlags = windowsCtrlIsCommand ? .maskCommand : .maskControl
 
-        if base == .maskControl, !shift, keyCode == kVK_PageUp || keyCode == kVK_PageDown {
+        if base == ctrl, !shift, keyCode == kVK_PageUp || keyCode == kVK_PageDown {
             rewrite(event, keyCode: kVK_Tab, modifiers: keyCode == kVK_PageUp ? [.maskControl, .maskShift] : [.maskControl])
             return true
         }
 
-        if base == .maskControl, keyCode == kVK_LeftArrow || keyCode == kVK_RightArrow {
+        if base == ctrl, keyCode == kVK_LeftArrow || keyCode == kVK_RightArrow {
             rewrite(event, keyCode: keyCode, modifiers: shift ? [.maskAlternate, .maskShift] : [.maskAlternate])
             return true
         }
@@ -394,8 +400,8 @@ final class KeyboardRemappingEngine {
         switch (keyCode, base) {
         case (kVK_Home, []): target = (kVK_LeftArrow, [.maskCommand])
         case (kVK_End, []): target = (kVK_RightArrow, [.maskCommand])
-        case (kVK_Home, .maskControl): target = (kVK_UpArrow, [.maskCommand])
-        case (kVK_End, .maskControl): target = (kVK_DownArrow, [.maskCommand])
+        case (kVK_Home, ctrl): target = (kVK_UpArrow, [.maskCommand])
+        case (kVK_End, ctrl): target = (kVK_DownArrow, [.maskCommand])
         default: target = nil
         }
         guard let (mappedKey, mappedModifiers) = target, textFocused ?? focusedElementIsTextInput() else { return false }

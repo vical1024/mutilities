@@ -119,6 +119,13 @@ struct LogicalShortcutTests {
         }
     }
 
+    @Test func windowsCtrlArrowsFollowTheSwappedCommandKey() throws {
+        let engine = KeyboardRemappingEngine(windowsEditorMode: true, windowsCtrlIsCommand: true)
+        let input = try event(kVK_LeftArrow, flags: .maskCommand)
+        _ = engine.transform(type: .keyDown, event: input, finderContext: .otherApplication, textFocused: false)
+        #expect(input.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift]) == .maskAlternate)
+    }
+
     @Test func windowsEditorKeysMapInTextInputsAndTabsAnywhere() throws {
         func mapped(_ key: Int, _ flags: CGEventFlags, text: Bool) throws -> (Int, CGEventFlags) {
             let engine = KeyboardRemappingEngine(windowsEditorMode: true)

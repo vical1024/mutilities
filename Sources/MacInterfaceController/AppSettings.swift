@@ -198,6 +198,7 @@ final class AppSettings: ObservableObject {
                                           finderFeatures: finderFeatures,
                                           windowSwitcherEnabled: windowSwitcherEnabled,
                                           windowsEditorMode: windowsEditorMode,
+                                          windowsCtrlIsCommand: swapCommandControl,
                                           macrosEnabled: shortcuts.contains { $0.isEnabled && $0.action == .macro })
         accessibilityGranted = engine.accessibilityGranted
         inputMonitoringGranted = engine.inputMonitoringGranted
