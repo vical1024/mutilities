@@ -200,6 +200,10 @@ static void onValue(void* ctx, IOReturn, void*, IOHIDValueRef value) {
 //
 static std::vector<std::unique_ptr<Dev>> g_devs;
 static std::vector<std::string> g_match;
+// Keyboards that also expose a pointer (mouse/pointing stick, e.g. a BLE keyboard or mouse with a keyboard
+// interface). A seize takes the whole device and only keys are forwarded, so its pointer would die.
+// While any exists nothing is seized and the app falls back to its event-tap swap.
+static std::vector<std::string> g_skipped;
 static std::string g_controlDir;
 static bool g_all = false;            // every physical keyboard (except the virtual one)
 static std::atomic<bool> g_restart(false);  // exit so launchd starts a fresh helper
@@ -211,6 +215,19 @@ static bool wanted(IOHIDDeviceRef d) {
   if (g_all) return true;
   for (auto& s : g_match)
     if (!s.empty() && p.find(s) != std::string::npos) return true;
+  return false;
+}
+
+static bool hasPointer(IOHIDDeviceRef d) {
+  auto pairs = (CFArrayRef)IOHIDDeviceGetProperty(d, CFSTR(kIOHIDDeviceUsagePairsKey));
+  if (!pairs || CFGetTypeID(pairs) != CFArrayGetTypeID()) return false;
+  for (CFIndex i = 0; i < CFArrayGetCount(pairs); ++i) {
+    auto pair = (CFDictionaryRef)CFArrayGetValueAtIndex(pairs, i);
+    int page = -1, usage = -1;
+    if (auto n = (CFNumberRef)CFDictionaryGetValue(pair, CFSTR(kIOHIDDeviceUsagePageKey))) CFNumberGetValue(n, kCFNumberIntType, &page);
+    if (auto n = (CFNumberRef)CFDictionaryGetValue(pair, CFSTR(kIOHIDDeviceUsageKey))) CFNumberGetValue(n, kCFNumberIntType, &usage);
+    if (page == kHIDPage_GenericDesktop && (usage == kHIDUsage_GD_Pointer || usage == kHIDUsage_GD_Mouse)) return true;
+  }
   return false;
 }
 
@@ -281,7 +298,8 @@ static void writeStatus(bool lease, bool off) {
   static CFAbsoluteTime lastWrite = 0;
   bool anySeized = false;
   for (auto& p : g_devs) anySeized = anySeized || p->seized;
-  std::string st = g_devs.empty() ? "no-keyboard" : off ? "disabled" : anySeized ? "active" : g_denied ? "denied"
+  std::string st = g_devs.empty() && g_skipped.empty() ? "no-keyboard" : off ? "disabled" : !g_skipped.empty() ? "unsupported"
+                 : anySeized ? "active" : g_denied ? "denied"
                  : !g_ready ? "starting" : lease ? "waiting" : "idle";
   CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
   if (st == last && now - lastWrite < 1.0) return;  // the mtime doubles as a heartbeat
@@ -314,7 +332,7 @@ static void tick(CFRunLoopTimerRef, void*) {
       if (off) release(dev, "disable file present");
       else if (!lease) release(dev, "lease expired");
       else if (!g_ready) release(dev, "virtual keyboard not ready");
-    } else if (lease && !off && now >= dev.nextTry) {
+    } else if (lease && !off && g_skipped.empty() && now >= dev.nextTry) {
       seize(dev, now);
     }
   }
@@ -440,6 +458,12 @@ int main(int argc, char** argv) {
     IOObjectRelease(svc);
     if (!d) continue;
     if (numProp(d, CFSTR(kIOHIDPrimaryUsagePageKey)) != 1 || numProp(d, CFSTR(kIOHIDPrimaryUsageKey)) != 6 || !wanted(d)) { CFRelease(d); continue; }
+    if (hasPointer(d)) {
+      g_skipped.push_back(prop(d, CFSTR(kIOHIDProductKey)));
+      logf("keyboard '" + g_skipped.back() + "' also has a pointer; not seizing any keyboard (falling back to event-tap swap)");
+      CFRelease(d);
+      continue;
+    }
     auto dev = std::make_unique<Dev>();
     dev->ref = d;
     dev->name = prop(d, CFSTR(kIOHIDProductKey));

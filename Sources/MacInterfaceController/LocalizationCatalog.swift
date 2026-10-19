@@ -31,6 +31,7 @@ extension L10n {
         "비밀번호 입력창에서도 교환 중": "Swapping in password fields too",
         "긴급 해제: 왼쪽 Shift + 오른쪽 Shift + Esc": "Emergency off: Left Shift + Right Shift + Esc",
         "보안 입력 교환 준비 중": "Preparing password-field swap",
+        "마우스·포인팅 스틱이 함께 있는 키보드가 연결되어 있어 보안 입력 교환을 쓰지 않습니다. 일반 방식으로 교환합니다.": "A connected keyboard also has a mouse or pointing stick, so password-field swapping is not used. Swapping the regular way.",
         "모든 키에서 손을 떼면 시작합니다. 그 전까지는 일반 방식으로 교환합니다.": "Starts once all keys are released. Until then the regular swap is used.",
         "비밀번호 입력창에서는 교환되지 않습니다": "Not swapped in password fields",
         "Karabiner-DriverKit-VirtualHIDDevice 드라이버를 설치하고 활성화하면 비밀번호 입력창에서도 교환합니다.": "Install and activate the Karabiner-DriverKit-VirtualHIDDevice driver to swap in password fields too.",

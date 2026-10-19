@@ -32,6 +32,8 @@ final class DisplayController: ObservableObject {
             Task { @MainActor in
                 guard let self, self.process == nil else { return }
                 self.refreshIdleState()
+                // The guard exits on any failure; an external display appearing again is the cue to resume.
+                if self.requested, !self.isStopping, self.error == nil, self.builtInOn == true, self.externalCount > 0 { self.start() }
             }
         }
     }

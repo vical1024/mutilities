@@ -86,6 +86,8 @@ struct SecureInputSwapNotice: View {
         case .inputMonitoringRequired:
             SettingsNotice(title: "헬퍼에 입력 모니터링 권한이 필요합니다", detail: "입력 모니터링 목록에 다음 파일을 추가해 주세요: \(helper.helperPath)",
                            actionTitle: "입력 모니터링 열기", action: { KeyboardRemappingEngine.shared.openInputMonitoringSettings() })
+        case .unsupportedDevice:
+            SettingsNotice(title: "비밀번호 입력창에서는 교환되지 않습니다", detail: "마우스·포인팅 스틱이 함께 있는 키보드가 연결되어 있어 보안 입력 교환을 쓰지 않습니다. 일반 방식으로 교환합니다.")
         case .disabledByShortcut:
             SettingsNotice(title: "긴급 해제로 보안 입력 교환이 꺼졌습니다", detail: "지금은 일반 방식으로 교환합니다. 비밀번호 입력창에서는 교환되지 않습니다.",
                            actionTitle: "다시 켜기", action: { helper.reenable() })

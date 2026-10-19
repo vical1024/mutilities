@@ -19,6 +19,14 @@ let signals = [SIGTERM, SIGINT, SIGHUP].map { number -> DispatchSourceSignal in
     return source
 }
 
+// Diagnostic trail for display problems; the UI never sees this process's stderr.
+var logHandle: FileHandle?
+func note(_ message: String) {
+    guard let logHandle else { return }
+    let stamp = ISO8601DateFormatter().string(from: Date())
+    logHandle.write(Data("\(stamp) \(message)\n".utf8))
+}
+
 func emit(_ message: String) {
     // A broken stdout must not interrupt restoration.
     let bytes = Array((message + "\n").utf8)
@@ -35,6 +43,14 @@ do {
                                             appropriateFor: nil, create: true)
         .appendingPathComponent("MacInterfaceController", isDirectory: true)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let logURL = folder.appendingPathComponent("display-guard.log")
+    if let size = (try? FileManager.default.attributesOfItem(atPath: logURL.path))?[.size] as? Int, size > 256_000 {
+        try? FileManager.default.removeItem(at: logURL)
+    }
+    if !FileManager.default.fileExists(atPath: logURL.path) { FileManager.default.createFile(atPath: logURL.path, contents: nil) }
+    logHandle = try? FileHandle(forWritingTo: logURL)
+    _ = try? logHandle?.seekToEnd()
+    note("start builtIn=\(id)")
     let lockFD = open(folder.appendingPathComponent("display-guard.lock").path, O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0o600)
     guard lockFD >= 0, flock(lockFD, LOCK_EX | LOCK_NB) == 0 else {
         throw DisplayFailure("다른 화면 제어 프로세스가 이미 실행 중입니다. 잠시 후 다시 시도해 주세요.")
@@ -46,6 +62,7 @@ do {
     session = activeSession
     emit("ready")
     var receivedHeartbeat = false
+    var lastState = ""
     while true {
         signalLock.lock(); let shouldStop = interrupted; signalLock.unlock()
         if shouldStop { break }
@@ -73,14 +90,18 @@ do {
             snapshot = try hardware.snapshot()
         }
         let state = "state \(snapshot.builtInActive ? "on" : "off") \(snapshot.externalIDs.count)"
+        if state != lastState { note("\(state) externals=\(snapshot.externalIDs.sorted())"); lastState = state }
         emit(state)
         // Pump WindowServer notifications without depending on the app's run loop.
         RunLoop.current.run(until: Date())
     }
+    note("stopping (EOF/signal)")
     try activeSession.stop()
+    note("restored")
     emit("restored")
     exit(0)
 } catch {
+    note("error " + error.localizedDescription)
     emit("error " + error.localizedDescription.replacingOccurrences(of: "\n", with: " "))
     // Retry independently of the UI, then exit to release app-scoped configuration.
     if let session {
