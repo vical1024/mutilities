@@ -23,6 +23,18 @@ public final class LiveDisplayHardware: DisplayHardware {
         return id
     }
 
+    /// The built-in panel's ID even while it is switched off. A guard that died without restoring leaves the panel
+    /// outside the active (and sometimes online) list, so fall back to the ID seen on an earlier successful start.
+    public static func builtInID(remembered: CGDirectDisplayID?) throws -> CGDirectDisplayID {
+        if let id = try? activeBuiltInID() { return id }
+        var ids = [CGDirectDisplayID](repeating: 0, count: 128)
+        var count: UInt32 = 0
+        if CGGetOnlineDisplayList(UInt32(ids.count), &ids, &count) == .success,
+           let id = ids.prefix(Int(count)).first(where: { CGDisplayIsBuiltin($0) != 0 }) { return id }
+        if let remembered, CGDisplayIsBuiltin(remembered) != 0 { return remembered }
+        return try activeBuiltInID()
+    }
+
     public init(builtInID: CGDirectDisplayID) throws {
         guard CGDisplayIsBuiltin(builtInID) != 0 else { throw DisplayFailure("내장 화면 식별자가 유효하지 않습니다.") }
         guard let library = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_NOW | RTLD_LOCAL) else {

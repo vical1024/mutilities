@@ -23,6 +23,7 @@ final class DisplayController: ObservableObject {
     private var lastResponse: TimeInterval = 0
     private var stopStarted: TimeInterval?
     private var recoveryHardware: LiveDisplayHardware?
+    private var lastBuiltInID: CGDirectDisplayID?
     private var restartAfterStop = false
     /// After wake the built-in panel stays on for this long before the guard may switch it off again.
     static let wakeGrace: TimeInterval = 30
@@ -142,8 +143,12 @@ final class DisplayController: ObservableObject {
         if graceUntil.timeIntervalSinceNow > 0 { scheduleStartAfterGrace(); return }
         error = nil
         do {
-            let id = try LiveDisplayHardware.activeBuiltInID()
-            recoveryHardware = try LiveDisplayHardware(builtInID: id)
+            let id = try LiveDisplayHardware.builtInID(remembered: lastBuiltInID)
+            let hardware = try LiveDisplayHardware(builtInID: id)
+            // An earlier guard that died without restoring leaves the panel off; turn it back on before guarding.
+            if try !hardware.snapshot().builtInActive { try hardware.setBuiltInEnabled(true) }
+            lastBuiltInID = id
+            recoveryHardware = hardware
             guard let executable = Bundle.main.executableURL else { throw DisplayFailure("앱 실행 경로를 찾지 못했습니다.") }
             let child = Process()
             child.executableURL = executable.deletingLastPathComponent().appendingPathComponent("DisplayGuard")

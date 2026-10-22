@@ -25,9 +25,11 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>
-	<false/>
+	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Finder에서 선택한 폴더를 터미널에서 열기 위해 Finder의 현재 위치를 읽습니다.</string>
 	<key>NSInputMonitoringUsageDescription</key>
 	<string>Windows 스타일 키 조합과 창 단위 전환을 감지하기 위해 키보드 입력을 모니터링합니다.</string>
 </dict>

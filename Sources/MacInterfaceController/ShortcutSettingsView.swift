@@ -58,6 +58,7 @@ private struct ShortcutLibraryView: View {
                                 Button(L10n.text("앱 표시 / 숨기기 추가")) { add(.toggleApplication) }
                                 Button(L10n.text("단축키 추가")) { add(.applications) }
                                 Button(L10n.text("한/영 전환 추가")) { add(.toggleInputSource) }
+                                Button(L10n.text("터미널에서 열기 추가")) { add(.openInTerminal) }
                             } label: { Label(L10n.text("단축키 추가"), systemImage: "plus") }
                                 .menuStyle(.borderlessButton).fixedSize()
                         }
@@ -167,6 +168,9 @@ struct ShortcutRuleRow: View {
                             }.labelsHidden().frame(maxWidth: 360, alignment: .leading)
                             Spacer(minLength: 0)
                         }
+                    }
+                    if rule.action == .openInTerminal {
+                        Text(L10n.text("터미널 앱은 'Finder 연동'에서 선택합니다.")).font(.caption).foregroundStyle(.secondary)
                     }
                     if rule.action == .toggleApplication {
                         ApplicationTargetPicker(target: $rule.targetApplication)

@@ -185,7 +185,9 @@ final class KeyboardRemappingEngine {
             let modifiers = relevantModifiers(event.flags)
             if languageShortcuts.contains(where: { $0.keyCode == keyCode && $0.modifiers == modifiers }) {
                 if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
-                    Task { @MainActor in ActionRunner.run(.toggleInputSource) }
+                    // The tap runs on the main run loop. Switching here, before the next key is
+                    // delivered, keeps the characters typed right after the toggle in the new language.
+                    MainActor.assumeIsolated { ActionRunner.run(.toggleInputSource) }
                 }
                 consumedKeys.insert(keyCode)
                 return nil

@@ -16,6 +16,7 @@ struct ContentView: View {
                 } header: { Text(L10n.text("입력")).font(.caption.weight(.regular)) }
                 Section {
                     sidebarRow(.windowSwitcher)
+                    sidebarRow(.finder)
                     sidebarRow(.corners)
                     sidebarRow(.dock)
                     sidebarRow(.display)
@@ -44,6 +45,7 @@ struct ContentView: View {
                 case .shortcuts: ShortcutSettingsView()
                 case .macros: MacroSettingsView()
                 case .windowSwitcher: WindowSwitcherSettingsView()
+                case .finder: FinderIntegrationView()
                 case .display: DisplaySettingsView()
                 case .dock: DockSettingsView()
                 case .corners: HotCornerSettingsView()
@@ -96,6 +98,7 @@ struct MenuBarView: View {
     @ObservedObject private var windowFocus = WindowSwitcherController.shared.focusController
     @ObservedObject private var windowLayout = WindowLayoutController.shared
     @ObservedObject private var display = DisplayController.shared
+    @ObservedObject private var openInTerminal = OpenInTerminalController.shared
     var body: some View {
         let _ = uiLanguage
         Text(L10n.text(settings.statusText))
@@ -119,6 +122,9 @@ struct MenuBarView: View {
         }
         if windowClose.lastError != nil {
             Button(L10n.text("창 닫기 확인 필요…")) { openSettings(.windowSwitcher) }
+        }
+        if let error = openInTerminal.lastError {
+            Text(L10n.text(error))
         }
         if windowFocus.lastError != nil {
             Button(L10n.text("창 전환 실패 · 확인…")) { openSettings(.windowSwitcher) }

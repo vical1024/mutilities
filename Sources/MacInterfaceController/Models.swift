@@ -9,6 +9,7 @@ enum AppAction: String, Codable, CaseIterable, Identifiable {
     case launchpad
     case screenSaver
     case applications
+    case openInTerminal
     case macro
     case windowLeft, windowRight, windowMaximize, windowRestore, windowCenter, windowCenterHeight
 
@@ -23,6 +24,7 @@ enum AppAction: String, Codable, CaseIterable, Identifiable {
         case .launchpad: "Launchpad"
         case .screenSaver: "화면 보호기 시작"
         case .applications: "응용 프로그램 폴더"
+        case .openInTerminal: "Finder 위치를 터미널에서 열기"
         case .macro: "키 연속입력 매크로"
         case .windowLeft: "창 왼쪽 절반"
         case .windowRight: "창 오른쪽 절반"
@@ -42,6 +44,7 @@ enum AppAction: String, Codable, CaseIterable, Identifiable {
         case .launchpad: "square.grid.3x3.fill"
         case .screenSaver: "moon.stars.fill"
         case .applications: "folder.fill"
+        case .openInTerminal: "terminal"
         case .macro: "list.bullet.rectangle"
         case .windowLeft: "rectangle.lefthalf.inset.filled"
         case .windowRight: "rectangle.righthalf.inset.filled"
@@ -196,7 +199,7 @@ struct HotCornerRule: Codable, Identifiable, Equatable {
 }
 
 enum SidebarItem: String, CaseIterable, Identifiable {
-    case keyboard, shortcuts, macros, windowSwitcher, display, corners, dock, checks
+    case keyboard, shortcuts, macros, windowSwitcher, finder, display, corners, dock, checks
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -204,6 +207,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .shortcuts: "단축키"
         case .macros: "매크로"
         case .windowSwitcher: "창 관리"
+        case .finder: "Finder 연동"
         case .display: "디스플레이"
         case .dock: "Dock"
         case .corners: "핫 코너"
@@ -216,6 +220,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .shortcuts: "command"
         case .macros: "list.bullet.rectangle"
         case .windowSwitcher: "rectangle.on.rectangle"
+        case .finder: "folder"
         case .dock: "dock.rectangle"
         case .display: "laptopcomputer"
         case .corners: "arrow.up.left.and.arrow.down.right"

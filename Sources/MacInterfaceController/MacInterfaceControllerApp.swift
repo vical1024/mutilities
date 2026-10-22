@@ -34,7 +34,7 @@ struct MacInterfaceControllerApp: App {
     @StateObject private var navigation = AppNavigation()
     @AppStorage(AppLanguage.defaultsKey) private var language = AppLanguage.korean.rawValue
 
-    init() { EnglishAssistController.shared.start() }
+    init() { InputSourceFileLog.shared.start() }
 
     var body: some Scene {
         Window(L10n.text("mutilities"), id: "settings") {

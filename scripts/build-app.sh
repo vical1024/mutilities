@@ -22,6 +22,9 @@ cp "$binary_dir/MacInterfaceController" "$staged_app/Contents/MacOS/MacInterface
 cp "$binary_dir/FunctionKeyRestore" "$staged_app/Contents/MacOS/FunctionKeyRestore"
 cp "$binary_dir/DisplayGuard" "$staged_app/Contents/MacOS/DisplayGuard"
 ./scripts/build-swap-helper.sh "$staged_app/Contents/MacOS/SwapHelper"
+mkdir -p "$staged_app/Contents/PlugIns" "$staged_app/Contents/Library/Helpers"
+./scripts/build-finder-agent.sh "$staged_app/Contents/Library/Helpers/mutilities Finder Agent.app"
+./scripts/build-finder-extension.sh "$staged_app/Contents/PlugIns/FinderExtension.appex"
 mkdir -p "$staged_app/Contents/Library/LaunchDaemons"
 cp "$project_dir/Resources/dev.local.MacInterfaceController.swaphelper.plist" "$staged_app/Contents/Library/LaunchDaemons/"
 cp "$project_dir/Resources/Info.plist" "$staged_app/Contents/Info.plist"
@@ -30,6 +33,8 @@ signing_identity="${CODE_SIGN_IDENTITY:--}"
 codesign --force --sign "$signing_identity" "$staged_app/Contents/MacOS/FunctionKeyRestore"
 codesign --force --sign "$signing_identity" "$staged_app/Contents/MacOS/DisplayGuard"
 codesign --force --sign "$signing_identity" "$staged_app/Contents/MacOS/SwapHelper"
+codesign --force --sign "$signing_identity" "$staged_app/Contents/Library/Helpers/mutilities Finder Agent.app"
+codesign --force --sign "$signing_identity" --entitlements "$project_dir/Resources/FinderExtension.entitlements" "$staged_app/Contents/PlugIns/FinderExtension.appex"
 if [[ "$signing_identity" == "-" ]]; then
   codesign --force --sign - \
     --requirements '=designated => identifier "dev.local.MacInterfaceController"' \
