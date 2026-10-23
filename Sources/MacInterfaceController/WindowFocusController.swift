@@ -89,6 +89,7 @@ final class LiveWindowFocusBackend: WindowFocusBackend {
     private let application: NSRunningApplication
     private let window: AXUIElement
     private let appElement: AXUIElement
+    private let tab: AXUIElement?
     var targetPID: pid_t { application.processIdentifier }
     var unavailableReason: String? {
         if application.isTerminated { return "선택한 앱이 종료되어 창을 열 수 없습니다." }
@@ -96,9 +97,10 @@ final class LiveWindowFocusBackend: WindowFocusBackend {
         return nil
     }
 
-    init(application: NSRunningApplication, window: AXUIElement) {
+    init(application: NSRunningApplication, window: AXUIElement, tab: AXUIElement? = nil) {
         self.application = application
         self.window = window
+        self.tab = tab
         appElement = AXUIElementCreateApplication(application.processIdentifier)
         AXUIElementSetMessagingTimeout(appElement, 0.2)
         AXUIElementSetMessagingTimeout(window, 0.2)
@@ -119,6 +121,7 @@ final class LiveWindowFocusBackend: WindowFocusBackend {
         if attribute(window, kAXMinimizedAttribute) as? Bool == true {
             AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
         }
+        if let tab { AXUIElementPerformAction(tab, kAXPressAction as CFString) }
         // Set the selected window before activation so Finder does not restore
         // its previously-main window instead. AXFocusedWindow can be read-only.
         AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)

@@ -6,6 +6,7 @@ private struct WindowTarget {
     let display: WindowDisplayItem
     let application: NSRunningApplication
     let element: AXUIElement
+    var tab: AXUIElement? = nil
 }
 
 struct WindowDisplayItem: Identifiable {
@@ -14,12 +15,23 @@ struct WindowDisplayItem: Identifiable {
     let windowTitle: String
     let icon: NSImage
     let isMinimized: Bool
-    var profile: String? = nil
+    var isTab = false
+
+    static func isChromium(_ bundleIdentifier: String?) -> Bool {
+        let chromium = ["com.google.Chrome", "com.brave.Browser", "com.microsoft.edgemac", "com.vivaldi.Vivaldi", "company.thebrowser.Browser"]
+        guard let bundleIdentifier else { return false }
+        return chromium.contains { bundleIdentifier.hasPrefix($0) }
+    }
+
+    /// "Google Chrome" + "Logan (sonatus)" -> "Chrome | Logan (sonatus)".
+    static func name(appName: String, profile: String?) -> String {
+        guard let profile else { return appName }
+        return "\(appName.replacingOccurrences(of: "Google ", with: "")) | \(profile)"
+    }
 
     /// Chromium browsers append " - <Browser> - <Profile>" to the window title once more than one profile exists.
     static func splitProfile(title: String, appName: String, bundleIdentifier: String?) -> (title: String, profile: String?) {
-        let chromium = ["com.google.Chrome", "com.brave.Browser", "com.microsoft.edgemac", "com.vivaldi.Vivaldi", "company.thebrowser.Browser"]
-        guard let bundleIdentifier, chromium.contains(where: { bundleIdentifier.hasPrefix($0) }) else { return (title, nil) }
+        guard isChromium(bundleIdentifier) else { return (title, nil) }
         for dash in [" - ", " – "] {
             let marker = "\(dash)\(appName)\(dash)"
             if let range = title.range(of: marker, options: .backwards) {
@@ -31,9 +43,9 @@ struct WindowDisplayItem: Identifiable {
         return (title, nil)
     }
 
-    /// Stable hue per profile name so the same profile always gets the same colour.
-    static func hue(for name: String) -> Double {
-        Double(name.unicodeScalars.reduce(UInt32(5381)) { ($0 &* 33) &+ $1.value } % 360) / 360
+    /// Chromium appends hover-card details such as " - Memory usage - 243 MB" to the tab's accessible title.
+    static func cleanTabTitle(_ title: String) -> String {
+        title.replacingOccurrences(of: #" - (Memory usage|메모리 사용량) - .*$"#, with: "", options: .regularExpression)
     }
 }
 
@@ -125,7 +137,7 @@ final class WindowSwitcherController: WindowSwitching {
             guard let self, self.presentationID == id, self.transitionID == transition, self.model.isCommitting else { return }
             self.closeController.cancel()
             self.hidePanel()
-            self.focusController.activate(LiveWindowFocusBackend(application: target.application, window: target.element))
+            self.focusController.activate(LiveWindowFocusBackend(application: target.application, window: target.element, tab: target.tab))
             self.targets = []
             self.model.reset()
         }
@@ -139,6 +151,10 @@ final class WindowSwitcherController: WindowSwitching {
 
     func closeSelection() {
         guard targets.indices.contains(model.selectedIndex) else { return }
+        guard !targets[model.selectedIndex].display.isTab else {
+            model.notice = "탭은 창 전환기에서 닫을 수 없습니다."
+            return
+        }
         closeWindow(id: targets[model.selectedIndex].display.id)
     }
 
@@ -213,15 +229,22 @@ final class WindowSwitcherController: WindowSwitching {
         return panel
     }
 
+    private var manualAccessibilityPIDs: Set<pid_t> = []
+
     private func enumerateWindows() -> [WindowTarget] {
         let applications = NSWorkspace.shared.runningApplications.filter {
             $0.activationPolicy == .regular && !$0.isTerminated
         }
         let frontOrder = frontmostProcessOrder()
         var results: [WindowTarget] = []
+        var inactiveTabs: [WindowTarget] = []
 
         for application in applications {
             let appElement = AXUIElementCreateApplication(application.processIdentifier)
+            // Chromium and Electron (Slack, ...) only publish their windows after a client asks for the accessibility tree.
+            if manualAccessibilityPIDs.insert(application.processIdentifier).inserted {
+                AXUIElementSetAttributeValue(appElement, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            }
             for element in axWindows(of: appElement) {
                 let role = stringAttribute(element, kAXRoleAttribute as CFString)
                 let subrole = stringAttribute(element, kAXSubroleAttribute as CFString)
@@ -233,25 +256,68 @@ final class WindowSwitcherController: WindowSwitching {
                 let appName = application.localizedName ?? "알 수 없는 앱"
                 let split = WindowDisplayItem.splitProfile(title: title, appName: appName, bundleIdentifier: application.bundleIdentifier)
                 let icon = application.icon ?? NSImage(systemSymbolName: "app", accessibilityDescription: nil) ?? NSImage()
+                let displayName = WindowDisplayItem.name(appName: appName, profile: split.profile)
                 results.append(WindowTarget(
                     display: WindowDisplayItem(
-                        applicationName: appName,
+                        applicationName: displayName,
                         windowTitle: split.title.isEmpty ? "제목 없는 창" : split.title,
                         icon: icon,
-                        isMinimized: minimized,
-                        profile: split.profile
+                        isMinimized: minimized
                     ),
                     application: application,
                     element: element
                 ))
+                guard split.profile != nil || WindowDisplayItem.isChromium(application.bundleIdentifier) else { continue }
+                for tab in chromiumTabs(in: element) where !tab.isActive {
+                    inactiveTabs.append(WindowTarget(
+                        display: WindowDisplayItem(
+                            applicationName: displayName,
+                            windowTitle: tab.title.isEmpty ? "제목 없는 탭" : tab.title,
+                            icon: icon,
+                            isMinimized: minimized,
+                            isTab: true
+                        ),
+                        application: application,
+                        element: element,
+                        tab: tab.element
+                    ))
+                }
             }
         }
 
-        return results.sorted {
+        // Each window's active tab keeps its recency order; the other tabs follow so ⌥Tab still toggles between windows.
+        let sorted = results.sorted {
             let left = frontOrder[$0.application.processIdentifier] ?? Int.max
             let right = frontOrder[$1.application.processIdentifier] ?? Int.max
             return left < right
         }
+        return sorted + inactiveTabs
+    }
+
+    /// Chromium exposes each tab as an AXTabButton radio button; the selected one has value 1.
+    private func chromiumTabs(in window: AXUIElement) -> [(element: AXUIElement, title: String, isActive: Bool)] {
+        AXUIElementSetMessagingTimeout(window, 0.25)
+        var tabs: [(element: AXUIElement, title: String, isActive: Bool)] = []
+        var queue: [(AXUIElement, Int)] = [(window, 0)]
+        var visited = 0
+        while !queue.isEmpty, visited < 600 {
+            let (element, depth) = queue.removeFirst()
+            visited += 1
+            let role = stringAttribute(element, kAXRoleAttribute as CFString)
+            if role == "AXRadioButton", stringAttribute(element, kAXSubroleAttribute as CFString) == "AXTabButton" {
+                var value: CFTypeRef?
+                _ = AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value)
+                let title = WindowDisplayItem.cleanTabTitle(stringAttribute(element, kAXTitleAttribute as CFString) ?? "")
+                tabs.append((element, title, (value as? NSNumber)?.intValue == 1))
+                continue
+            }
+            guard depth < 9, role != "AXWebArea" else { continue }
+            var children: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &children) == .success,
+                  let array = children as? [AXUIElement] else { continue }
+            queue.append(contentsOf: array.map { ($0, depth + 1) })
+        }
+        return tabs
     }
 
     private func frontmostProcessOrder() -> [pid_t: Int] {
@@ -368,11 +434,6 @@ private struct WindowSwitcherCard: View {
                         HStack(spacing: 5) {
                             Text(item.applicationName).font(.callout.weight(.regular))
                             if item.isMinimized { Image(systemName: "minus.square") }
-                            if let profile = item.profile {
-                                Label(profile, systemImage: "person.crop.circle.fill").font(.caption.weight(.medium)).lineLimit(1)
-                                    .padding(.horizontal, 7).padding(.vertical, 2)
-                                    .background(Color(hue: WindowDisplayItem.hue(for: profile), saturation: 0.55, brightness: 0.7), in: Capsule())
-                            }
                         }
                         Text(item.windowTitle).font(.caption).lineLimit(1).foregroundStyle(.white.opacity(0.68))
                     }
@@ -380,13 +441,15 @@ private struct WindowSwitcherCard: View {
                     Image(systemName: "return").font(.caption).opacity(selected ? 0.82 : 0)
                 }.frame(maxWidth: .infinity, minHeight: 58).contentShape(Rectangle())
             }.buttonStyle(.plain).disabled(closing)
-            Button(action: close) {
-                Image(systemName: closing ? "ellipsis" : "xmark").font(.system(size: 11, weight: .regular))
-                    .frame(width: 26, height: 26).background(.white.opacity(0.12), in: Circle())
+            if !item.isTab {
+                Button(action: close) {
+                    Image(systemName: closing ? "ellipsis" : "xmark").font(.system(size: 11, weight: .regular))
+                        .frame(width: 26, height: 26).background(.white.opacity(0.12), in: Circle())
+                }
+                .buttonStyle(.plain).disabled(closing)
+                .help(L10n.text(closing ? "창 닫기 확인 중" : "창 닫기"))
+                .accessibilityLabel(L10n.text("\(item.applicationName) · \(item.windowTitle) 창 닫기"))
             }
-            .buttonStyle(.plain).disabled(closing)
-            .help(L10n.text(closing ? "창 닫기 확인 중" : "창 닫기"))
-            .accessibilityLabel(L10n.text("\(item.applicationName) · \(item.windowTitle) 창 닫기"))
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 12)

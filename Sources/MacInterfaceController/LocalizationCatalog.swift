@@ -398,6 +398,8 @@ extension L10n {
         "접근성과 입력 모니터링 권한을 모두 허용해 주세요.": "Allow both Accessibility and Input Monitoring.",
         "정보 가져오기": "Get Info",
         "제목 없는 창": "Untitled window",
+        "제목 없는 탭": "Untitled tab",
+        "탭은 창 전환기에서 닫을 수 없습니다.": "Tabs cannot be closed from the window switcher.",
         "조작 키 보기": "Show controls",
         "종료": "Quit",
         "종료 복원 실패: {0}": "Quit-time restore failed: {0}",
