@@ -205,10 +205,21 @@ struct WindowCloseKeyTests {
         #expect(switcher.closes == 0)
     }
 
-    @Test func holdingPostSwapControlStillAllowsWToClose() throws {
+    @Test func commandAndControlWPassThroughWithCommandControlSwap() throws {
+        for flags: CGEventFlags in [.maskCommand, .maskControl] {
+            let switcher = FakeSwitcher()
+            let engine = KeyboardRemappingEngine(swapCommandControl: true, windowSwitcherEnabled: true, windowSwitcher: switcher)
+            let press = try event(kVK_ANSI_W, flags: flags)
+            #expect(engine.transform(type: .keyDown, event: press, finderContext: .otherApplication) != nil)
+            #expect(press.flags.contains(flags == .maskCommand ? .maskControl : .maskCommand))
+            #expect(switcher.closes == 0)
+        }
+    }
+
+    @Test func holdingOptionStillAllowsWToCloseWithCommandControlSwap() throws {
         let switcher = FakeSwitcher()
         let engine = KeyboardRemappingEngine(swapCommandControl: true, windowSwitcherEnabled: true, windowSwitcher: switcher)
-        let press = try event(kVK_ANSI_W, flags: .maskCommand)
+        let press = try event(kVK_ANSI_W, flags: .maskAlternate)
         #expect(engine.transform(type: .keyDown, event: press, finderContext: .otherApplication) == nil)
         #expect(switcher.closes == 1)
     }
