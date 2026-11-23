@@ -199,7 +199,7 @@ struct HotCornerRule: Codable, Identifiable, Equatable {
 }
 
 enum SidebarItem: String, CaseIterable, Identifiable {
-    case keyboard, shortcuts, macros, windowSwitcher, finder, display, corners, dock, checks
+    case keyboard, shortcuts, macros, windowSwitcher, finder, display, corners, dock, changes, checks
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -211,6 +211,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .display: "디스플레이"
         case .dock: "Dock"
         case .corners: "핫 코너"
+        case .changes: "변경 내역"
         case .checks: "설정 점검"
         }
     }
@@ -224,6 +225,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .dock: "dock.rectangle"
         case .display: "laptopcomputer"
         case .corners: "arrow.up.left.and.arrow.down.right"
+        case .changes: "list.bullet.clipboard"
         case .checks: "checkmark.shield"
         }
     }

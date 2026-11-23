@@ -30,6 +30,12 @@ final class DisplayController: ObservableObject {
     private var graceUntil = Date.distantPast
     private var graceTimer: Timer?
     private var tickCount = 0
+    private var recoveryTask: Task<Void, Never>?
+    /// True while the shown error is a failed recovery check, so a later healthy display state can clear it.
+    private var recoveryErrorShown = false
+    private var startRetries = 0
+    private var startRetryTimer: Timer?
+    private static let maxAutomaticRetries = 20
 
     private var screenObserver: NSObjectProtocol?
 
@@ -141,7 +147,10 @@ final class DisplayController: ObservableObject {
 
     private func start() {
         if graceUntil.timeIntervalSinceNow > 0 { scheduleStartAfterGrace(); return }
+        recoveryTask?.cancel()
+        startRetryTimer?.invalidate()
         error = nil
+        recoveryErrorShown = false
         do {
             let id = try LiveDisplayHardware.builtInID(remembered: lastBuiltInID)
             let hardware = try LiveDisplayHardware(builtInID: id)
@@ -172,10 +181,49 @@ final class DisplayController: ObservableObject {
             stopStarted = nil
             isStopping = false
             startHeartbeat()
+            startRetries = 0
             tick()
         } catch {
-            self.error = error.localizedDescription
             isRunning = false
+            // WindowServer may still be reverting an earlier change; the configuration call fails until it settles.
+            guard requested, startRetries < Self.maxAutomaticRetries else { self.error = error.localizedDescription; return }
+            startRetries += 1
+            startRetryTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self, self.requested, self.process == nil else { return }
+                    self.start()
+                }
+            }
+        }
+    }
+
+    /// Turns the built-in panel back on after the guard has exited and keeps verifying until it is on. WindowServer
+    /// reverts the guard's app-scoped change asynchronously, so an immediate attempt can fail with a transient error.
+    /// After the quick attempts the error is shown, but the check continues so it clears itself once the panel is on.
+    private func recoverBuiltIn() {
+        guard let hardware = recoveryHardware else { return }
+        recoveryTask?.cancel()
+        recoveryTask = Task { @MainActor [weak self] in
+            var attempt = 0
+            var lastError: Error?
+            while !Task.isCancelled {
+                do {
+                    try hardware.setBuiltInEnabled(true)
+                    if self?.recoveryErrorShown == true { self?.error = nil; self?.recoveryErrorShown = false }
+                    self?.refreshIdleState()
+                    return
+                } catch { lastError = error }
+                attempt += 1
+                if [1, 5, Self.maxAutomaticRetries].contains(attempt) || attempt % 60 == 0 {
+                    let active = (try? LiveDisplayHardware.activeDisplays().map(String.init).joined(separator: ",")) ?? "?"
+                    self?.note("recovery attempt \(attempt) failed: \(lastError?.localizedDescription ?? "?") active=[\(active)] externals=\(Self.externalDisplayCount())")
+                }
+                if attempt == Self.maxAutomaticRetries {
+                    self?.error = "내장 화면 복구를 확인하지 못했습니다: " + (lastError?.localizedDescription ?? "")
+                    self?.recoveryErrorShown = true
+                }
+                try? await Task.sleep(for: .seconds(attempt < Self.maxAutomaticRetries ? 1.5 : 5))
+            }
         }
     }
 
@@ -197,8 +245,7 @@ final class DisplayController: ObservableObject {
             let expected = stopStarted != nil
             if !expected && error == nil { error = "화면 제어 프로세스가 종료되었습니다. 내장 화면을 복구하고 자동 끄기를 중지했습니다." }
             // Covers a helper crash independently of its own cleanup code.
-            do { try recoveryHardware?.setBuiltInEnabled(true) }
-            catch { self.error = "내장 화면 복구를 확인하지 못했습니다: " + error.localizedDescription }
+            recoverBuiltIn()
             input?.fileHandleForWriting.closeFile()
             output?.fileHandleForReading.closeFile()
             self.process = nil
@@ -301,6 +348,7 @@ final class DisplayController: ObservableObject {
         guard let ids = try? LiveDisplayHardware.activeDisplays() else { builtInOn = nil; return }
         let builtIn = ids.contains { CGDisplayIsBuiltin($0) != 0 }
         let external = ids.filter { CGDisplayIsBuiltin($0) == 0 }.count
+        if recoveryErrorShown, builtIn { error = nil; recoveryErrorShown = false }
         if builtInOn != builtIn { builtInOn = builtIn }
         if externalCount != external { externalCount = external }
     }

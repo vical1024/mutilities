@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct ProfileSettingsView: View {
     @AppStorage(AppLanguage.defaultsKey) private var uiLanguage = AppLanguage.korean.rawValue
+    @AppStorage(AppIconPlacement.defaultsKey) private var iconPlacement = AppIconPlacement.menuBar.rawValue
     @EnvironmentObject private var settings: AppSettings
     @State private var pendingProfile: PortableProfile?
     @State private var message: String?
@@ -20,6 +21,16 @@ struct ProfileSettingsView: View {
                         Text(L10n.text("앱 표시 언어"))
                         Spacer()
                         LanguagePicker().frame(width: 230)
+                    }.padding(.vertical, 6)
+                }
+                GroupBox(L10n.text("표시")) {
+                    HStack {
+                        Text(L10n.text("앱 아이콘 위치"))
+                        HelpButton(title: "앱 아이콘 위치", text: "Dock만 선택하면 메뉴 막대의 빠른 메뉴(설정 활성화, 동작 바로 실행)를 쓸 수 없습니다. Dock 아이콘을 누르면 설정 창이 열립니다.")
+                        Spacer()
+                        Picker("", selection: $iconPlacement) {
+                            ForEach(AppIconPlacement.allCases) { Text(L10n.text($0.title)).tag($0.rawValue) }
+                        }.labelsHidden().frame(width: 230)
                     }.padding(.vertical, 6)
                 }
                 GroupBox(L10n.text("실행")) {

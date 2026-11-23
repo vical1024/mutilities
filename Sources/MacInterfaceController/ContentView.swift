@@ -22,6 +22,7 @@ struct ContentView: View {
                     sidebarRow(.display)
                 } header: { Text(L10n.text("작업 공간")).font(.caption.weight(.regular)) }
                 Section {
+                    sidebarRow(.changes)
                     sidebarRow(.checks)
                 } header: { Text(L10n.text("관리")).font(.caption.weight(.regular)) }
             }
@@ -32,7 +33,7 @@ struct ContentView: View {
                     Toggle(L10n.text("설정 활성화"), isOn: $settings.engineEnabled).toggleStyle(.switch)
                         .disabled(settings.isWorking)
                     if !settings.sessionReady && !settings.isWorking {
-                        Button(L10n.text("시작 백업 다시 시도")) { Task { await settings.beginSession() } }
+                        Button(L10n.text("시작 백업 다시 시도")) { Task { await settings.startSession() } }
                     }
                     Text(L10n.text(settings.statusText)).font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -49,6 +50,7 @@ struct ContentView: View {
                 case .display: DisplaySettingsView()
                 case .dock: DockSettingsView()
                 case .corners: HotCornerSettingsView()
+                case .changes: ChangesView()
                 case .checks: CheckSettingsView()
                 }
             }

@@ -7,6 +7,9 @@ private struct WindowTarget {
     let application: NSRunningApplication
     let element: AXUIElement
     var tab: AXUIElement? = nil
+    /// Focus recency (0 = most recent), then on-screen order; Int.max when unknown.
+    var focusRank = Int.max
+    var recency = Int.max
 }
 
 struct WindowDisplayItem: Identifiable {
@@ -96,7 +99,9 @@ final class WindowSwitcherController: WindowSwitching {
 
     var isVisible: Bool { panel?.isVisible == true }
 
-    private init() {}
+    private let recencyTracker = WindowRecencyTracker()
+
+    private init() { recencyTracker.start() }
 
     func showOrCycle(reverse: Bool) {
         focusController.cancel()
@@ -236,6 +241,9 @@ final class WindowSwitcherController: WindowSwitching {
             $0.activationPolicy == .regular && !$0.isTerminated
         }
         let frontOrder = frontmostProcessOrder()
+        let windowOrder = windowRecencyOrder()
+        recencyTracker.sample()
+        let focusRanks = recencyTracker.ranks()
         var results: [WindowTarget] = []
         var inactiveTabs: [WindowTarget] = []
 
@@ -257,6 +265,10 @@ final class WindowSwitcherController: WindowSwitching {
                 let split = WindowDisplayItem.splitProfile(title: title, appName: appName, bundleIdentifier: application.bundleIdentifier)
                 let icon = application.icon ?? NSImage(systemSymbolName: "app", accessibilityDescription: nil) ?? NSImage()
                 let displayName = WindowDisplayItem.name(appName: appName, profile: split.profile)
+                var windowID: CGWindowID = 0
+                let known = axGetWindowID(element, &windowID) == .success
+                let recency = known ? windowOrder[windowID] ?? Int.max : Int.max
+                let focusRank = known ? focusRanks[windowID] ?? Int.max : Int.max
                 results.append(WindowTarget(
                     display: WindowDisplayItem(
                         applicationName: displayName,
@@ -265,7 +277,9 @@ final class WindowSwitcherController: WindowSwitching {
                         isMinimized: minimized
                     ),
                     application: application,
-                    element: element
+                    element: element,
+                    focusRank: focusRank,
+                    recency: recency
                 ))
                 guard split.profile != nil || WindowDisplayItem.isChromium(application.bundleIdentifier) else { continue }
                 for tab in chromiumTabs(in: element) where !tab.isActive {
@@ -286,11 +300,11 @@ final class WindowSwitcherController: WindowSwitching {
         }
 
         // Each window's active tab keeps its recency order; the other tabs follow so ⌥Tab still toggles between windows.
-        let sorted = results.sorted {
-            let left = frontOrder[$0.application.processIdentifier] ?? Int.max
-            let right = frontOrder[$1.application.processIdentifier] ?? Int.max
-            return left < right
-        }
+        // Order by window recency so windows of one app (e.g. two Chrome profiles) interleave with other apps correctly.
+        let sorted = results.enumerated().sorted { lhs, rhs in
+            let keys = [lhs, rhs].map { ($0.element.focusRank, $0.element.recency, frontOrder[$0.element.application.processIdentifier] ?? Int.max, $0.offset) }
+            return keys[0] < keys[1]
+        }.map(\.element)
         return sorted + inactiveTabs
     }
 
@@ -332,6 +346,21 @@ final class WindowSwitcherController: WindowSwitching {
                   let pidValue = item[kCGWindowOwnerPID as String] as? NSNumber else { continue }
             let pid = pid_t(pidValue.int32Value)
             if order[pid] == nil { order[pid] = order.count }
+        }
+        return order
+    }
+
+    private func windowRecencyOrder() -> [CGWindowID: Int] {
+        guard let info = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else { return [:] }
+
+        var order: [CGWindowID: Int] = [:]
+        for item in info {
+            guard let layer = item[kCGWindowLayer as String] as? Int, layer == 0,
+                  let number = item[kCGWindowNumber as String] as? NSNumber else { continue }
+            order[CGWindowID(number.uint32Value)] = order.count
         }
         return order
     }

@@ -42,14 +42,15 @@ final class InputSourceManager {
         }
     }
 
-    /// Selects the input source directly. With `inputSource.useSystemShortcut` set, types the system's
-    /// "Select the previous input source" shortcut instead so macOS notifies the focused app itself;
-    /// that mode falls back to direct selection when the shortcut is off.
+    /// Types the system's "Select the previous input source" shortcut so macOS notifies the focused app itself.
+    /// Falls back to selecting the input source directly when that shortcut is off, or when
+    /// `inputSource.useSystemShortcut` is set to false.
     func toggleKoreanEnglish() throws {
         let current = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
         remember(current)
 
-        if defaults.bool(forKey: Self.useSystemShortcutKey), let shortcut = Self.systemSwitchShortcut() {
+        // On by default: macOS performs the switch itself, so the focused app is notified like a real keypress.
+        if defaults.object(forKey: Self.useSystemShortcutKey) as? Bool ?? true, let shortcut = Self.systemSwitchShortcut() {
             postSystemSwitchShortcut(shortcut)
             record("toggle via system shortcut keyCode=\(shortcut.keyCode) flags=\(shortcut.flags.rawValue) tisKorean=\(isKorean(current)) secureInput=\(IsSecureEventInputEnabled()) front=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "-")")
             return
@@ -79,10 +80,12 @@ final class InputSourceManager {
     }
 
     /// Symbolic hot key 60 is "Select the previous input source"; parameters are [character, key code, modifier flags].
+    /// Without a stored entry (e.g. after the settings were reset to defaults) macOS uses Control+Space.
     private static func systemSwitchShortcut() -> (keyCode: CGKeyCode, flags: CGEventFlags)? {
-        guard let all = CFPreferencesCopyAppValue("AppleSymbolicHotKeys" as CFString, "com.apple.symbolichotkeys" as CFString) as? [String: Any],
-              let entry = all["60"] as? [String: Any],
-              entry["enabled"] as? Bool == true,
+        let macOSDefault = (keyCode: CGKeyCode(kVK_Space), flags: CGEventFlags.maskControl)
+        let all = CFPreferencesCopyAppValue("AppleSymbolicHotKeys" as CFString, "com.apple.symbolichotkeys" as CFString) as? [String: Any]
+        guard let entry = all?["60"] as? [String: Any] else { return macOSDefault }
+        guard entry["enabled"] as? Bool == true,
               let value = entry["value"] as? [String: Any],
               let parameters = value["parameters"] as? [Int], parameters.count >= 3,
               parameters[1] >= 0, parameters[1] != 65535 else { return nil }

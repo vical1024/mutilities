@@ -20,7 +20,10 @@ enum ActionRunner {
     }
 
     static func run(_ action: AppAction) {
-        guard !MacroRunner.shared.isRunning else { return }
+        guard !MacroRunner.shared.isRunning else {
+            if action == .toggleInputSource { InputSourceFileLog.shared.write("toggle skipped: a macro is marked as running") }
+            return
+        }
         switch action {
         case .toggleInputSource:
             do {

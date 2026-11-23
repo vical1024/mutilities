@@ -115,6 +115,8 @@ protocol SystemSettingsBackend {
     func write(_ item: PreferenceBackup, removing: Bool) throws
     func setHIDMappings(_ mappings: [HIDMapping]) throws
     func finish() throws
+    func captureSymbolicHotKeys() throws -> [PreferenceBackup]
+    func activateHotKeys() throws
 }
 
 extension SystemSettingsBackend {
@@ -124,6 +126,10 @@ extension SystemSettingsBackend {
     func captureHotCorners() throws -> [PreferenceBackup] {
         try capture().preferences.filter { $0.address.domain == "com.apple.dock" && SystemDefaultsService.hotCornerKeys.contains($0.address.key) }
     }
+    func captureSymbolicHotKeys() throws -> [PreferenceBackup] {
+        try capture().preferences.filter { $0.address == SystemDefaultsService.symbolicHotKeysAddress }
+    }
+    func activateHotKeys() throws {}
 }
 
 struct SystemSettingsTransaction {
@@ -302,9 +308,24 @@ struct LocalSystemSettingsBackend: SystemSettingsBackend {
     func finish() throws {
         _ = try SystemDefaultsService.run("/usr/bin/killall", ["-u", NSUserName(), "Dock"], acceptedExitCodes: [0, 1])
     }
+
+    func captureSymbolicHotKeys() throws -> [PreferenceBackup] {
+        let address = SystemDefaultsService.symbolicHotKeysAddress
+        guard CFPreferencesSynchronize(address.domain as CFString, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) else {
+            throw SystemDefaultsError.commandFailed("시스템 단축키를 읽지 못했습니다.")
+        }
+        guard let value = CFPreferencesCopyValue(address.key as CFString, address.domain as CFString, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) else { return [] }
+        return [PreferenceBackup(address: address, value: try PropertyListSerialization.data(fromPropertyList: ["value": value], format: .binary, options: 0))]
+    }
+
+    /// Makes the window server re-read the symbolic hot keys without a login.
+    func activateHotKeys() throws {
+        _ = try SystemDefaultsService.run("/System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings", ["-u"], acceptedExitCodes: [0, 1])
+    }
 }
 
 enum SystemDefaultsService {
+    static let symbolicHotKeysAddress = PreferenceAddress(domain: "com.apple.symbolichotkeys", currentHost: false, key: "AppleSymbolicHotKeys")
     static let hotCornerKeys: Set<String> = ["wvous-tl-corner", "wvous-tl-modifier", "wvous-tr-corner", "wvous-tr-modifier", "wvous-bl-corner", "wvous-bl-modifier", "wvous-br-corner", "wvous-br-modifier"]
 
     static let dockSizeKeys: Set<String> = ["tilesize", "magnification", "largesize"]

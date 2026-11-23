@@ -21,13 +21,23 @@ final class AppSettings: ObservableObject {
     @Published private(set) var historyError: String?
     @Published private(set) var historyMessage: String?
     @Published private(set) var sessionReady = false
+    @Published private(set) var managedChanges: [ManagedChange] = []
     private var startupTask: Task<Void, Never>?
-    private lazy var dockUpdates = LatestSettingsUpdate<DockConfiguration?>(
-        write: { try await SettingsHistory.shared.applyDock($0) },
+    private lazy var dockUpdates = LatestSettingsUpdate<DockTarget>(
+        write: { try await SettingsHistory.shared.applyDock(target: $0) },
         onError: { [weak self] error in self?.historyError = error.localizedDescription })
     private lazy var hotCornerUpdates = LatestSettingsUpdate<Set<CornerPosition>?>(
         write: { try await SettingsHistory.shared.applyHotCorners($0) },
         onError: { [weak self] error in self?.historyError = error.localizedDescription })
+    private lazy var languageUpdates = LatestSettingsUpdate<LanguageTarget>(
+        write: { [weak self] target in
+            do { try await SettingsHistory.shared.applyLanguageShortcut(target) }
+            catch { await MainActor.run { self?.systemLanguageActive = false; self?.apply() }; throw error }
+            await MainActor.run { self?.systemLanguageActive = target.isCustom; self?.apply() }
+        },
+        onError: { [weak self] error in self?.historyError = error.localizedDescription })
+    /// True once macOS itself owns the language shortcut, so the event tap and Carbon must not fire it a second time.
+    private var systemLanguageActive = false
     private var terminating = false
     private var operationInProgress = false
     private var operationWaiters: [CheckedContinuation<Void, Never>] = []
@@ -84,6 +94,7 @@ final class AppSettings: ObservableObject {
         if !engineEnabled { return "앱 엔진이 꺼져 있어 한/영 단축키도 중지되어 있습니다." }
         if isWorking { return "시스템 설정 변경 중에는 단축키를 잠시 중지합니다." }
         if MacroRunner.shared.isRunning { return "매크로 실행 중에는 단축키를 잠시 중지합니다. Esc로 매크로를 중지할 수 있습니다." }
+        if systemLanguageActive { return "한/영 단축키 사용 중(macOS 시스템 단축키): " + rules.map(\.displayText).joined(separator: ", ") }
         let registered = rules.filter { activeShortcutIDs.contains($0.id) }
         if !registered.isEmpty {
             return "한/영 단축키 사용 중: " + registered.map(\.displayText).joined(separator: ", ")
@@ -132,7 +143,7 @@ final class AppSettings: ObservableObject {
             self?.apply()
         }
         hasFinishedInitialization = true
-        startupTask = Task { await beginSession() }
+        startupTask = Task { await startSession() }
         monitor = Task { [weak self] in
             var tick = 0
             while !Task.isCancelled {
@@ -166,8 +177,8 @@ final class AppSettings: ObservableObject {
 
     func apply() {
         guard hasFinishedInitialization, sessionReady, !terminating, !isWorking else { return }
-        let desiredDock = engineEnabled && !isWorking ? dockConfiguration : nil
-        dockUpdates.submit(desiredDock)
+        dockUpdates.submit(dockTarget(enabled: engineEnabled && !isWorking))
+        languageUpdates.submit(languageTarget(enabled: engineEnabled && !isWorking))
         hotCornerUpdates.submit(engineEnabled && !isWorking ? Set(corners.filter(\.isEnabled).map(\.position)) : nil)
         defer { publishRuntimeStatus() }
         FunctionKeyController.shared.apply(engineEnabled && !isWorking ? standardFunctionKeys : nil)
@@ -199,7 +210,7 @@ final class AppSettings: ObservableObject {
                                           windowSwitcherEnabled: windowSwitcherEnabled,
                                           windowsEditorMode: windowsEditorMode,
                                           windowsCtrlIsCommand: swapCommandControl,
-                                          languageShortcuts: shortcuts,
+                                          languageShortcuts: tapShortcuts,
                                           macrosEnabled: shortcuts.contains { $0.isEnabled && $0.action == .macro })
         accessibilityGranted = engine.accessibilityGranted
         inputMonitoringGranted = engine.inputMonitoringGranted
@@ -210,15 +221,15 @@ final class AppSettings: ObservableObject {
             return
         }
         // The event tap now handles the language toggle, so Carbon must not fire it a second time.
-        let tapHandled = Set(LanguageShortcutPolicy.independentRules(from: shortcuts).map(\.id))
-        shortcutError = HotKeyCenter.shared.configure(shortcuts.filter { !tapHandled.contains($0.id) })
+        let tapHandled = Set(LanguageShortcutPolicy.independentRules(from: tapShortcuts).map(\.id))
+        shortcutError = HotKeyCenter.shared.configure(tapShortcuts.filter { !tapHandled.contains($0.id) })
         activeShortcutIDs = HotKeyCenter.shared.registeredRuleIDs.union(tapHandled)
         HotCornerMonitor.shared.configure(corners)
         engineRunning = true
     }
 
     private func configureIndependentLanguageShortcuts() {
-        shortcutError = HotKeyCenter.shared.configure(LanguageShortcutPolicy.independentRules(from: shortcuts))
+        shortcutError = HotKeyCenter.shared.configure(LanguageShortcutPolicy.independentRules(from: tapShortcuts))
         activeShortcutIDs = HotKeyCenter.shared.registeredRuleIDs
     }
 
@@ -311,6 +322,7 @@ final class AppSettings: ObservableObject {
         isWorking = true
         await dockUpdates.flush()
         await hotCornerUpdates.flush()
+        await languageUpdates.flush()
         let previousPhase = setupPhase
         DisplayController.shared.apply(false)
         systemGeneration = UUID()
@@ -329,6 +341,7 @@ final class AppSettings: ObservableObject {
         await refreshSystemState()
         dockUpdates.invalidate()
         hotCornerUpdates.invalidate()
+        languageUpdates.invalidate()
         apply()
     }
 
@@ -364,6 +377,7 @@ final class AppSettings: ObservableObject {
         setPhase(.needsSetup)
         await dockUpdates.flush()
         await hotCornerUpdates.flush()
+        await languageUpdates.flush()
         do {
             try await SystemDefaultsService.restoreBackup(at: url)
             try await SettingsHistory.shared.rebase(app: configurationSnapshot)
@@ -413,7 +427,20 @@ final class AppSettings: ObservableObject {
             loginEnabled: SMAppService.mainApp.status == .enabled || SMAppService.mainApp.status == .requiresApproval)
     }
 
-    func beginSession() async {
+    /// Backs up the current settings, resets every managed setting to its macOS default, then applies the app's own values.
+    /// Everything is restored from the backup on exit.
+    func startSession() async {
+        await beginSession(applyAfter: false)
+        guard sessionReady else { return }
+        await prepareSystem()
+        if setupPhase == .awaitingVerification { await confirmDefaults() }
+        await refreshChanges()
+        if setupError == nil, setupPhase == .ready, !managedChanges.isEmpty {
+            historyMessage = "시작할 때 macOS 설정 \(managedChanges.count)개를 앱이 변경했습니다. 종료하면 원래 값으로 복원합니다. 변경 내역에서 확인할 수 있습니다."
+        }
+    }
+
+    func beginSession(applyAfter: Bool = true) async {
         guard !sessionReady, !isWorking, !operationInProgress else { return }
         operationInProgress = true
         defer {
@@ -429,7 +456,7 @@ final class AppSettings: ObservableObject {
             sessionReady = true
         } catch { historyError = "시작 백업 실패: \(error.localizedDescription)" }
         isWorking = false
-        if sessionReady { apply() }
+        if sessionReady, applyAfter { apply() }
         await refreshHistory()
     }
 
@@ -442,6 +469,7 @@ final class AppSettings: ObservableObject {
         isWorking = true
         await dockUpdates.flush()
         await hotCornerUpdates.flush()
+        await languageUpdates.flush()
         DisplayController.shared.shutdown()
         stopEngines()
         stopSwapHelper()
@@ -467,7 +495,44 @@ final class AppSettings: ObservableObject {
         dockConfiguration = configuration
         defaults.set(try? JSONEncoder().encode(configuration), forKey: "dock.configuration.v2")
         // Dock edits do not rebuild keyboard taps, macros, or shortcut registrations.
-        dockUpdates.submit(engineEnabled ? configuration : nil)
+        dockUpdates.submit(dockTarget(enabled: engineEnabled))
+    }
+
+    /// The first enabled language rule becomes macOS' own "previous input source" shortcut while the app runs.
+    private func languageTarget(enabled: Bool) -> LanguageTarget {
+        guard enabled else { return .original }
+        guard let rule = shortcuts.first(where: { $0.isEnabled && $0.action == .toggleInputSource }) else { return .macOSDefault }
+        let flags = rule.modifiers.reduce(0) { total, modifier in
+            switch modifier {
+            case .shift: total | 0x20000
+            case .control: total | 0x40000
+            case .option: total | 0x80000
+            case .command: total | 0x100000
+            }
+        }
+        let scalars = rule.key.title.lowercased().unicodeScalars
+        let character = rule.key == .space ? 32 : (scalars.count == 1 && scalars.first!.isASCII ? Int(scalars.first!.value) : 65535)
+        return .custom(character: character, keyCode: Int(rule.key.keyCode), flags: flags)
+    }
+
+    /// Rules the event tap and Carbon still handle; the language toggle moves to macOS once its shortcut is installed.
+    private var tapShortcuts: [ShortcutRule] {
+        systemLanguageActive ? shortcuts.filter { $0.action != .toggleInputSource } : shortcuts
+    }
+
+    /// While the app runs, the Dock starts from the macOS defaults and only the app's own values are written over them.
+    private func dockTarget(enabled: Bool) -> DockTarget {
+        guard enabled else { return .original }
+        return dockConfiguration.map(DockTarget.custom) ?? .macOSDefault
+    }
+
+    /// Compares the settings captured at session start with what macOS holds now.
+    func refreshChanges() async {
+        guard let baseline = await SettingsHistory.shared.sessionBaseline(),
+              let live = try? await SettingsHistory.shared.liveSystem() else { managedChanges = []; return }
+        let functionKeys = FunctionKeyController.shared.actualStandard
+        let changes = ManagedChange.diff(before: baseline.system, now: live, beforeFunctionKeys: baseline.functionKeys, nowFunctionKeys: functionKeys)
+        if changes != managedChanges { managedChanges = changes }
     }
 
     func refreshHistory() async {
@@ -488,6 +553,7 @@ final class AppSettings: ObservableObject {
         historyError = nil
         await dockUpdates.flush()
         await hotCornerUpdates.flush()
+        await languageUpdates.flush()
         do {
             _ = try await SettingsHistory.shared.checkpoint(app: configurationSnapshot, name: name)
             historyMessage = "현재 시점의 설정을 백업했습니다."
@@ -511,6 +577,7 @@ final class AppSettings: ObservableObject {
         historyError = nil
         await dockUpdates.flush()
         await hotCornerUpdates.flush()
+        await languageUpdates.flush()
         stopEngines()
         stopSwapHelper()
         FunctionKeyController.shared.apply(nil)
@@ -539,6 +606,7 @@ final class AppSettings: ObservableObject {
             historyMessage = "선택한 시점으로 복원했습니다."
             dockUpdates.invalidate()
             hotCornerUpdates.invalidate()
+            languageUpdates.invalidate()
         } catch { historyError = error.localizedDescription }
         isWorking = false
         await refreshKeyMappingState()

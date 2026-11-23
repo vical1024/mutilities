@@ -187,6 +187,7 @@ final class KeyboardRemappingEngine {
                 if event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
                     // The tap runs on the main run loop. Switching here, before the next key is
                     // delivered, keeps the characters typed right after the toggle in the new language.
+                    InputSourceFileLog.shared.write("language shortcut matched key=\(keyCode) flags=0x\(String(modifiers.rawValue, radix: 16))")
                     MainActor.assumeIsolated { ActionRunner.run(.toggleInputSource) }
                 }
                 consumedKeys.insert(keyCode)
@@ -447,15 +448,24 @@ final class KeyboardRemappingEngine {
     }
 
     private func finderHasFocusedTextInput() -> Bool {
-        let systemWide = AXUIElementCreateSystemWide()
-        var focusedValue: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(
-            systemWide,
-            kAXFocusedUIElementAttribute as CFString,
-            &focusedValue
-        ) == .success, let focusedValue else { return false }
+        let result = focusedElement().map(isTextInput) ?? false
+        if UserDefaults.standard.bool(forKey: "editorDetectionLog") { logEditorDetection(result: result) }
+        return result
+    }
 
-        let focusedElement = unsafeBitCast(focusedValue, to: AXUIElement.self)
+    /// Chromium often answers the system-wide query with nothing, while the frontmost application element still knows its focus.
+    private func focusedElement() -> AXUIElement? {
+        var focusedValue: CFTypeRef?
+        if AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute as CFString, &focusedValue) == .success,
+           let focusedValue { return unsafeBitCast(focusedValue, to: AXUIElement.self) }
+        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedValue) == .success,
+              let focusedValue else { return nil }
+        return unsafeBitCast(focusedValue, to: AXUIElement.self)
+    }
+
+    private func isTextInput(_ focusedElement: AXUIElement) -> Bool {
         var roleValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
             focusedElement,
@@ -463,9 +473,42 @@ final class KeyboardRemappingEngine {
             &roleValue
         ) == .success, let role = roleValue as? String else { return false }
 
-        return role == (kAXTextFieldRole as String)
+        if role == (kAXTextFieldRole as String)
             || role == (kAXTextAreaRole as String)
-            || role == (kAXComboBoxRole as String)
+            || role == (kAXComboBoxRole as String) { return true }
+        // Web editors (Gmail compose, Jira comments, ...) are contenteditable elements whose role is not a text role.
+        // Only an editable ancestor that is actually present counts; the attribute names exist on every web element.
+        for name in ["AXHighestEditableAncestor", "AXEditableAncestor"] {
+            var ancestor: CFTypeRef?
+            if AXUIElementCopyAttributeValue(focusedElement, name as CFString, &ancestor) == .success, ancestor != nil { return true }
+        }
+        var editable: CFTypeRef?
+        return AXUIElementCopyAttributeValue(focusedElement, "AXEditable" as CFString, &editable) == .success
+            && (editable as? Bool) == true
+    }
+
+    /// Diagnostics for `defaults write dev.local.MacInterfaceController editorDetectionLog -bool YES`.
+    private func logEditorDetection(result: Bool) {
+        func describe(_ element: AXUIElement?) -> String {
+            guard let element else { return "none" }
+            func text(_ name: String) -> String {
+                var value: CFTypeRef?
+                return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? String(describing: value as Any) : "-"
+            }
+            var names: CFArray?
+            AXUIElementCopyAttributeNames(element, &names)
+            return "role=\(text("AXRole")) subrole=\(text("AXSubrole")) desc=\(text("AXRoleDescription")) editableAncestor=\(text("AXEditableAncestor") != "-") highest=\(text("AXHighestEditableAncestor") != "-") AXEditable=\(text("AXEditable")) attrs=\((names as? [String] ?? []).joined(separator: ","))"
+        }
+        var systemFocused: CFTypeRef?
+        let system = AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute as CFString, &systemFocused) == .success
+            ? systemFocused.map { unsafeBitCast($0, to: AXUIElement.self) } : nil
+        let line = "\(ISO8601DateFormatter().string(from: Date())) app=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?") result=\(result)\n  systemWide: \(describe(system))\n  resolved: \(describe(focusedElement()))\n"
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/MacInterfaceController/editor-detection.log")
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile(); handle.write(Data(line.utf8)); try? handle.close()
+        } else {
+            try? line.write(to: url, atomically: true, encoding: .utf8)
+        }
     }
 
     private func relevantModifiers(_ flags: CGEventFlags) -> CGEventFlags {

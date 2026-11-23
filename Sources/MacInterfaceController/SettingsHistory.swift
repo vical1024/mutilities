@@ -15,6 +15,30 @@ struct DockConfiguration: Codable, Equatable {
     }
 }
 
+/// What the Dock preferences should be: the user's pre-session values, the macOS defaults, or the app's own configuration.
+enum DockTarget: Equatable {
+    case original
+    case macOSDefault
+    case custom(DockConfiguration)
+}
+
+/// The macOS "Select the previous input source" shortcut (symbolic hot key 60): the user's pre-session hot keys,
+/// the macOS defaults, or one shortcut owned by the app. The system handles it even while Secure Event Input is on.
+enum LanguageTarget: Equatable {
+    case original
+    case macOSDefault
+    case custom(character: Int, keyCode: Int, flags: Int)
+
+    var isCustom: Bool { if case .custom = self { true } else { false } }
+
+    func preference() throws -> PreferenceBackup? {
+        guard case .custom(let character, let keyCode, let flags) = self else { return nil }
+        let entry: [String: Any] = ["enabled": true, "value": ["type": "standard", "parameters": [character, keyCode, flags]]]
+        return PreferenceBackup(address: SystemDefaultsService.symbolicHotKeysAddress,
+                                value: try PropertyListSerialization.data(fromPropertyList: ["value": ["60": entry]], format: .binary, options: 0))
+    }
+}
+
 struct AppConfigurationSnapshot: Codable, Equatable {
     var profile: PortableProfile
     var engineEnabled: Bool
@@ -139,11 +163,19 @@ actor SettingsHistory {
     }
 
     func applyDock(_ configuration: DockConfiguration?) throws {
+        try applyDock(target: configuration.map(DockTarget.custom) ?? .original)
+    }
+
+    func applyDock(target: DockTarget) throws {
         guard let active else { throw SystemDefaultsError.commandFailed("시작 백업이 완료되지 않았습니다.") }
+        var configuration: DockConfiguration?
+        if case .custom(let custom) = target { configuration = custom }
         guard configuration?.isValid != false else { throw SystemDefaultsError.invalidBackup }
         let old = try backend.captureDock()
         let desired: [PreferenceBackup]
-        if let configuration {
+        if target == .macOSDefault {
+            desired = []
+        } else if let configuration {
             var values: [(String, Any)] = [("autohide", configuration.autoHide)]
             if let delay = configuration.delay { values.append(("autohide-delay", delay)) }
             if let duration = configuration.duration { values.append(("autohide-time-modifier", duration)) }
@@ -159,16 +191,29 @@ actor SettingsHistory {
         try transition(old: old, desired: desired, label: "Dock", capture: backend.captureDock)
     }
 
+    func applyLanguageShortcut(_ target: LanguageTarget) throws {
+        guard let active else { throw SystemDefaultsError.commandFailed("시작 백업이 완료되지 않았습니다.") }
+        let old = try backend.captureSymbolicHotKeys()
+        let desired: [PreferenceBackup]
+        switch target {
+        case .original: desired = active.target.system.preferences.filter { $0.address == SystemDefaultsService.symbolicHotKeysAddress }
+        case .macOSDefault: desired = []
+        case .custom: desired = try target.preference().map { [$0] } ?? []
+        }
+        try transition(old: old, desired: desired, label: "한/영 단축키", capture: backend.captureSymbolicHotKeys, finishing: backend.activateHotKeys)
+    }
+
     /// Replaces the current values of one managed preference group with `desired`, rolling back on any failure.
     private func transition(old: [PreferenceBackup], desired: [PreferenceBackup], label: String,
-                            capture: () throws -> [PreferenceBackup]) throws {
+                            capture: () throws -> [PreferenceBackup], finishing: (() throws -> Void)? = nil) throws {
+        func finish() throws { if let finishing { try finishing() } else { try backend.finish() } }
         let currentScope = SystemSettingsBackup(createdAt: Date(), machineName: label, preferences: old, hidMappings: [])
         let targetScope = SystemSettingsBackup(createdAt: Date(), machineName: label, preferences: desired, hidMappings: [])
         if try currentScope.hasSameSettings(as: targetScope) { return }
         do {
             for item in old { try backend.write(item, removing: true) }
             for item in desired { try backend.write(item, removing: false) }
-            try backend.finish()
+            try finish()
             let actual = try capture()
             guard try SystemSettingsBackup(createdAt: Date(), machineName: label, preferences: actual, hidMappings: []).hasSameSettings(as: targetScope) else { throw SystemDefaultsError.commandFailed("\(label) 적용 상태를 확인하지 못했습니다.") }
         } catch {
@@ -176,7 +221,7 @@ actor SettingsHistory {
             do {
                 for item in try capture() { try backend.write(item, removing: true) }
                 for item in old { try backend.write(item, removing: false) }
-                try backend.finish()
+                try finish()
                 let restored = SystemSettingsBackup(createdAt: Date(), machineName: label, preferences: try capture(), hidMappings: [])
                 guard try restored.hasSameSettings(as: currentScope) else {
                     throw SystemDefaultsError.commandFailed("\(label) 자동 복구 결과를 확인하지 못했습니다.")
@@ -206,6 +251,13 @@ actor SettingsHistory {
         }
         try transition(old: old, desired: desired, label: "핫 코너", capture: backend.captureHotCorners)
     }
+
+    /// The settings captured when this session started, which are restored on exit.
+    func sessionBaseline() -> (system: SystemSettingsBackup, functionKeys: Bool?)? {
+        active.map { ($0.target.system, $0.target.functionKeys) }
+    }
+
+    func liveSystem() throws -> SystemSettingsBackup { try backend.capture() }
 
     func list() throws -> [SettingsSnapshot] {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
